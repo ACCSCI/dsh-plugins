@@ -51,9 +51,14 @@
 - **`@deepseek-ai/dsh-client-ui-primitives`**：状态/优先级都用它的 `Menu` 渲染（与官方插件同一套圆角、投影、
   开合动画与键盘行为），不再是原生 `<select>`。该模块在 shell 的冻结平台模块表里
   （`window.__DSH_BOOT__` 的种子表），所以客户端半直接 `require` 即可，不需要声明 `dsh.client.inject`。
-- **图标用应用自带的图标集**（`IconQueueOutline14` / `IconLoadingOutline16` / `IconCheckOutline16` /
-  `IconWarningOutline16` / `IconClockOutline16` / `IconTrashOutline16` …），而不是外挂 Lucide：
+- **图标用应用自带的图标集**（`IconQueueOutline*` / `IconLoadingOutline*` / `IconCheckOutline*` /
+  `IconWarningOutline*` / `IconClockOutline*` / `IconTrashOutline*` …），而不是外挂 Lucide：
   这样线条粗细、尺寸档位与整个 GUI 一致；Lucide 也不在平台模块表里，只能内联路径数据，风格反而会割裂。
+  **图标按基名解析，不按精确导出名**：不同构建的后缀不同（桌面端 app.asar 里是 `…OutlineRegular` /
+  `…OutlineMedium`，npm 上的 `0.1.5-rc.1` 是 `…Outline16` / `…Outline14`）。写死某个后缀会在另一种构建里
+  得到 `undefined`，而 `createElement(undefined)` 是 React #130 硬崩——整个面板会在渲染瞬间挂掉（错误日志
+  会显示 `slot entry crashed in 'shell.overlay'`）。因此本插件按基名在多个后缀里找，找不到就渲染空，
+  并且在没有 `Menu` 导出的构建里退回到内置列表。
 - **颜色全部走主题令牌**（`--dsw-alias-*`）：状态色取自 `brand-primary` / `state-success-primary` /
   `state-error-primary` / `state-warn-primary` / `label-secondary`，浅色与深色主题都自动正确，
   不写死黑色或白色。
