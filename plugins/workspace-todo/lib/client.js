@@ -212,6 +212,11 @@ window.__ModuleLoader__.load({
 .wst-menu{position:absolute;z-index:2;top:calc(100% + 4px);left:0;min-width:132px;padding:4px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22));border-radius:10px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));box-shadow:0 16px 40px -12px rgba(0,0,0,.35);animation:wst-in .14s cubic-bezier(.2,.8,.2,1)}
 .wst-menu-item{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border:0;border-radius:7px;background:transparent;color:inherit;font-family:inherit;font-size:12px;text-align:left;cursor:pointer;transition:background .12s ease}
 .wst-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))}
+.wst-scrim{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.32);backdrop-filter:blur(2px);animation:wst-fade .14s ease}
+.wst-modal{width:min(340px,calc(100vw - 32px));padding:14px 15px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22));border-radius:14px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary,inherit);box-shadow:0 24px 56px -20px rgba(0,0,0,.5);font-family:inherit;font-size:12px;animation:wst-in .16s cubic-bezier(.2,.8,.2,1)}
+.wst-modal-title{font-size:13px;font-weight:600;margin-bottom:6px}
+.wst-modal-desc{color:var(--dsw-alias-label-secondary,#888);font-size:11.5px;line-height:1.6}
+.wst-modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 
 .wst-spin{animation:wst-spin 1.05s linear infinite}
 @keyframes wst-in{from{opacity:0;transform:translateY(-4px) scale(.985)}to{opacity:1;transform:none}}
@@ -290,8 +295,10 @@ window.__ModuleLoader__.load({
 					open: false,
 					/** True while the exit animation runs, so the panel can still render its last frame. */
 					closing: false,
-					/** `<todo id>:<status|priority>` of the row menu that is open, or null. */
+					/** `<todo id>:<status|priority|date>` of the row popup that is open, or null. */
 					openMenu: null,
+					/** The 清空已完成 confirmation dialog is showing. */
+					confirmClear: false,
 					anchor: null,
 					/** The header button the panel hangs from, re-measured on resize. */
 					anchorElement: null,
@@ -380,12 +387,14 @@ window.__ModuleLoader__.load({
 				return;
 			}
 			/*
-			 * Adopting another working directory replaces the list in the store, so
-			 * an unsaved edit from the outgoing directory is written first — and a
-			 * write that is still in flight is awaited so the snapshot starts from
-			 * the version the server actually holds.
+			 * Adopting the stored list replaces whatever is in the panel, so pending
+			 * edits are written first — whenever they exist, not only when the working
+			 * directory changes: opening another Session on the SAME directory also
+			 * reloads, and a debounced edit would otherwise be replaced by the older
+			 * file and then saved over. A write still in flight is awaited so the
+			 * snapshot starts from the version the server actually holds.
 			 */
-			if (dir !== state.dir && pending()) {
+			if (pending()) {
 				if (queue.timer !== null) {
 					clearTimeout(queue.timer);
 					queue.timer = null;
@@ -394,10 +403,20 @@ window.__ModuleLoader__.load({
 				if (pending()) await saveNow();
 			}
 			const token = ++queue.loadToken;
+			const editsAtStart = queue.editSeq;
 			emit({ loading: true, error: null, conflict: false, sessionId: sessionId ?? null });
 			try {
 				const payload = await request("/state?dir=" + encodeURIComponent(dir));
 				if (token !== queue.loadToken) return;
+				/*
+				 * A read that resolves after the user has already typed must not put the
+				 * older stored list back on screen: their edit wins here, and the pending
+				 * write carries it to the file. The next refresh picks up outside changes.
+				 */
+				if (queue.editSeq !== editsAtStart) {
+					emit({ loading: false });
+					return;
+				}
 				queue.savedSeq = queue.editSeq;
 				emit({
 					dir: typeof payload.dir === "string" ? payload.dir : dir,
@@ -600,6 +619,23 @@ window.__ModuleLoader__.load({
 				if (after) to += 1;
 				todos.splice(to, 0, moved);
 			});
+		}
+
+		/**
+		 * Drop every finished row in one edit — the only bulk deletion the panel
+		 * offers, and the reason it asks for confirmation first.
+		 * @returns how many rows were removed.
+		 */
+		function clearCompleted() {
+			const removed = state.todos.filter((todo) => todo.status === "done").length;
+			if (removed === 0) return 0;
+			updateTodos((todos) => {
+				for (let index = todos.length - 1; index >= 0; index -= 1) {
+					if (todos[index].status === "done") todos.splice(index, 1);
+				}
+			});
+			toast("已清空 " + String(removed) + " 项已完成");
+			return removed;
 		}
 
 		function setFilter(value) {
@@ -913,6 +949,59 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
+		 * The kit's button when the build provides one, otherwise the panel's own
+		 * compact control — the confirmation must render on any shell.
+		 */
+		function kitButton(props) {
+			if (typeof ui.Button === "function") {
+				return react.createElement(ui.Button, {
+					variant: props.variant,
+					size: props.size || "sm",
+					icon: props.icon,
+					onClick: props.onClick,
+					disabled: props.disabled,
+					type: "button",
+				}, props.children);
+			}
+			return react.createElement(
+				"button",
+				{ type: "button", className: props.className || "wst-mini", onClick: props.onClick, disabled: props.disabled },
+				props.icon,
+				react.createElement("span", null, props.children),
+			);
+		}
+
+		/** The kit's centered confirmation dialog, or a self-contained one. */
+		function ModalSurface(props) {
+			if (typeof ui.Modal === "function") {
+				return react.createElement(ui.Modal, {
+					open: props.open,
+					onClose: props.onClose,
+					title: props.title,
+					closeLabel: props.closeLabel,
+					description: props.description,
+					footer: props.footer,
+				});
+			}
+			if (props.open !== true) return null;
+			const card = react.createElement(
+				"div",
+				{ className: "wst-modal", role: "dialog", "aria-label": props.title, "data-wst-surface": "modal" },
+				react.createElement("div", { className: "wst-modal-title" }, props.title),
+				props.description === undefined ? null : react.createElement("div", { className: "wst-modal-desc" }, props.description),
+				react.createElement("div", { className: "wst-modal-foot" }, props.footer),
+			);
+			const host = typeof document === "undefined" ? null : document.body;
+			const scrim = react.createElement(
+				"div",
+				{ className: "wst-scrim", "data-wst-surface": "modal", onClick: props.onClose },
+				react.createElement("div", { onClick: (event) => event.stopPropagation() }, card),
+			);
+			if (host !== null && reactDom !== null && typeof reactDom.createPortal === "function") return reactDom.createPortal(scrim, host);
+			return scrim;
+		}
+
+		/**
 		 * The anchored dropdown. The kit's `Menu` is used whenever it exists; a build
 		 * that renames or drops it falls back to an inline list rather than a panel
 		 * that cannot render at all.
@@ -946,7 +1035,7 @@ window.__ModuleLoader__.load({
 		/** Close plays the exit animation first, so the panel never blinks out. */
 		function closePanel() {
 			flush();
-			emit({ openMenu: null });
+			emit({ openMenu: null, confirmClear: false });
 			if (state.closing === true) return;
 			emit({ closing: true });
 			closeTimer = setTimeout(() => {
@@ -1278,7 +1367,11 @@ window.__ModuleLoader__.load({
 				};
 				const onKeyDown = (event) => {
 					if (event.key === "Escape") {
-						// A row menu owns the first Escape; the panel closes on the next one.
+						// The confirmation dialog and a row popup each own the first Escape.
+						if (state.confirmClear === true) {
+							emit({ confirmClear: false });
+							return;
+						}
 						if (state.openMenu !== null) {
 							emit({ openMenu: null });
 							return;
@@ -1450,7 +1543,40 @@ window.__ModuleLoader__.load({
 						onClick: () => void loadFor(snapshot.sessionId, snapshot.dir),
 					}, "重新载入")
 					: null,
+				// Bulk deletion is offered only while there is something to remove.
+				doneCount > 0
+					? react.createElement("button", {
+						type: "button", className: "wst-mini wst-del", title: "移除所有已完成待办",
+						"aria-label": "清空已完成", onClick: () => emit({ confirmClear: true }),
+					}, iconOf("Trash", { size: 12 }), react.createElement("span", null, "清空已完成"))
+					: null,
 			);
+
+			/*
+			 * Removing finished rows in bulk is the one action that can lose several
+			 * rows at once, so it goes through the kit's own confirmation dialog.
+			 */
+			const confirmDialog = react.createElement(ModalSurface, {
+				open: snapshot.confirmClear === true,
+				onClose: () => emit({ confirmClear: false }),
+				title: "清空已完成",
+				closeLabel: "关闭",
+				description: "将从这份清单中移除 " + String(doneCount) + " 项已完成待办，此操作无法撤销。",
+				footer: [
+					react.createElement(kitButton, {
+						key: "cancel", variant: "ghost", className: "wst-mini",
+						onClick: () => emit({ confirmClear: false }),
+					}, "取消"),
+					react.createElement(kitButton, {
+						key: "confirm", variant: "primary", className: "wst-add-btn",
+						icon: iconOf("Trash", { size: 13 }),
+						onClick: () => {
+							emit({ confirmClear: false });
+							clearCompleted();
+						},
+					}, "清空 " + String(doneCount) + " 项"),
+				],
+			});
 
 			return react.createElement(
 				"div",
@@ -1458,7 +1584,7 @@ window.__ModuleLoader__.load({
 					className: "wst-panel", style: panelStyle, ref: panelRef, role: "dialog", "aria-label": "工作区待办清单",
 					"data-state": snapshot.closing === true ? "closing" : "open",
 				},
-				head, addRow, chips, list, foot,
+				head, addRow, chips, list, foot, confirmDialog,
 			);
 		}
 

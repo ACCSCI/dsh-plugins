@@ -125,6 +125,13 @@ function releaseSaves() {
   for (const resolve of heldSaves.splice(0)) resolve()
 }
 
+/** State reads can be parked too, to land one after a local edit. */
+let holdState = false
+const heldStates = []
+function releaseStates() {
+  for (const resolve of heldStates.splice(0)) resolve()
+}
+
 /** Extra fields the next save response should carry (e.g. the host's backup report). */
 let saveExtra = null
 
@@ -160,6 +167,9 @@ define('fetch', async (url, init) => {
   requests.push({ url: target, init: init ?? {} })
   if (holdSaves && target.includes('/workspace-todo/api/save')) {
     await new Promise((resolve) => heldSaves.push(resolve))
+  }
+  if (holdState && target.includes('/workspace-todo/api/state')) {
+    await new Promise((resolve) => heldStates.push(resolve))
   }
   const body = target.includes('/workspace-todo/api/save') && saveExtra !== null
     ? Object.assign({}, statePayload, saveExtra)
@@ -219,6 +229,23 @@ function buildUi(suffix, options = {}) {
         )
         : null,
     )
+  }
+  if (options.withModal !== false) {
+    stub.Button = (props) => react.createElement(
+      'button',
+      { type: 'button', className: props.className, 'data-variant': props.variant, disabled: props.disabled, onClick: props.onClick },
+      props.icon,
+      props.children,
+    )
+    stub.Modal = (props) => (props.open === true
+      ? react.createElement(
+        'div',
+        { className: 'stub-modal', role: 'dialog', 'data-wst-surface': 'modal', 'aria-label': props.title },
+        react.createElement('div', { className: 'stub-modal-title' }, props.title),
+        props.description === undefined ? null : react.createElement('div', { className: 'stub-modal-desc' }, props.description),
+        react.createElement('div', { className: 'stub-modal-foot' }, props.footer),
+      )
+      : null)
   }
   return stub
 }
@@ -636,6 +663,72 @@ check('clicking the header button is left to the button itself', findByClass(ren
 outsideClick({ target: new FakeElement('div') })
 await sleep(220)
 check('a genuine outside click still closes the panel', renderPanel().length === 0, 'still open')
+
+/* ------------------------------------------------------------------ */
+/* 4c. clearing completed rows asks first                              */
+/* ------------------------------------------------------------------ */
+
+clickButton(headerProps)
+panelTree = renderPanel()
+// The filter may still be hiding finished rows from the previous section.
+chipOf(panelTree)[0].props.onClick()
+panelTree = renderPanel()
+const doneRowsBefore = rowsOf(panelTree).filter((row) => row.props['data-done'] === 'true').length
+check('there are completed rows to clear', doneRowsBefore >= 1, String(doneRowsBefore))
+const clearTrigger = panelTree.find((node) => node.type === 'button' && node.props['aria-label'] === '清空已完成')
+check('the footer offers 清空已完成', clearTrigger !== undefined)
+check('nothing is removed before confirming', rowsOf(panelTree).filter((row) => row.props['data-done'] === 'true').length === doneRowsBefore)
+
+clearTrigger.props.onClick()
+panelTree = renderPanel()
+let confirmDialog = panelTree.find((node) => node.props['data-wst-surface'] === 'modal')
+check('clicking it opens a confirmation dialog', confirmDialog !== undefined)
+check('the dialog states how many rows it will remove', confirmDialog !== undefined && textOf([confirmDialog]).includes(String(doneRowsBefore)) && textOf([confirmDialog]).includes('无法撤销'), textOf([confirmDialog]).slice(0, 80))
+check('the dialog still removed nothing', rowsOf(panelTree).filter((row) => row.props['data-done'] === 'true').length === doneRowsBefore)
+
+const buttonWithText = (tree, label) => tree.find((node) => node.type === 'button' && textOf([node]).trim() === label)
+const cancelButton = buttonWithText(panelTree, '取消')
+check('the dialog offers a cancel action', cancelButton !== undefined)
+cancelButton.props.onClick()
+panelTree = renderPanel()
+check('cancelling closes the dialog and keeps every row', panelTree.every((node) => node.props['data-wst-surface'] !== 'modal') && rowsOf(panelTree).length >= doneRowsBefore + 1)
+
+panelTree.find((node) => node.type === 'button' && node.props['aria-label'] === '清空已完成').props.onClick()
+panelTree = renderPanel()
+const keydown = documentStub.listeners.get('keydown')
+keydown({ key: 'Escape' })
+panelTree = renderPanel()
+check('Escape cancels the dialog before closing the panel', panelTree.every((node) => node.props['data-wst-surface'] !== 'modal') && findByClass(panelTree, 'wst-panel') !== undefined)
+
+panelTree.find((node) => node.type === 'button' && node.props['aria-label'] === '清空已完成').props.onClick()
+panelTree = renderPanel()
+const confirmButton = panelTree.filter((node) => node.type === 'button' && textOf([node]).includes('清空 ')).pop()
+check('the dialog offers a confirming action', confirmButton !== undefined)
+confirmButton.props.onClick()
+panelTree = renderPanel()
+check('confirming removes exactly the finished rows', rowsOf(panelTree).filter((row) => row.props['data-done'] === 'true').length === 0, String(rowsOf(panelTree).filter((row) => row.props['data-done'] === 'true').length))
+check('the open rows survive', rowsOf(panelTree).length >= 1)
+check('the trigger disappears once nothing is finished', panelTree.every((node) => node.props['aria-label'] !== '清空已完成'))
+await sleep(450)
+const clearedSave = requests.filter((entry) => entry.url.includes('/workspace-todo/api/save')).map((entry) => JSON.parse(entry.init.body)).pop()
+check('the cleared list reaches the host', clearedSave !== null && clearedSave.todos.every((todo) => todo.status !== 'done'), JSON.stringify(clearedSave.todos.map((todo) => todo.status)))
+
+/* ------------------------------------------------------------------ */
+/* 4d. a read that lands after an edit must not undo the edit          */
+/* ------------------------------------------------------------------ */
+
+holdState = true
+renderPanel().find((node) => node.type === 'button' && node.props['aria-label'] === '从磁盘重新载入').props.onClick()
+await tick()
+check('the read is parked in flight', heldStates.length === 1, String(heldStates.length))
+typeNewTodo('竞态条目')
+await sleep(420)
+releaseStates()
+await sleep(80)
+holdState = false
+check('a late read does not erase an edit made while it was in flight', textOf(renderPanel()).includes('竞态条目'))
+const raceSave = requests.filter((entry) => entry.url.includes('/workspace-todo/api/save')).map((entry) => JSON.parse(entry.init.body)).pop()
+check('the edit still reaches the host', raceSave !== null && raceSave.todos.some((todo) => todo.title === '竞态条目'), JSON.stringify(raceSave && raceSave.todos.map((todo) => todo.title)))
 
 /* ------------------------------------------------------------------ */
 /* 5. other shell builds: legacy icon names, and no Menu primitive     */
