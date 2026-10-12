@@ -16,6 +16,12 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		const react = require("react");
+		/**
+		 * The shell's own UI kit, seeded in the platform module table: the same
+		 * menu, buttons, and icon set the shipped plugins render with, so the panel
+		 * matches the app instead of imitating it.
+		 */
+		const ui = require("@deepseek-ai/dsh-client-ui-primitives");
 
 		const API_BASE = "/workspace-todo/api";
 		const HEADER_SLOT = "conversation.session.header.utilities";
@@ -23,83 +29,152 @@ window.__ModuleLoader__.load({
 		const FILTER_KEY = "dsh.workspace-todo.filter";
 		const TOAST_MS = 1800;
 		const SAVE_DEBOUNCE_MS = 350;
+		const CLOSE_MS = 130;
 
 		/** Status order is the user's: 待办, 进行中, 已完成, 阻塞, 等待. */
 		const STATUSES = [
-			{ id: "todo", label: "待办" },
-			{ id: "doing", label: "进行中" },
-			{ id: "done", label: "已完成" },
-			{ id: "blocked", label: "阻塞" },
-			{ id: "waiting", label: "等待" },
+			{ id: "todo", label: "待办", Icon: ui.IconQueueOutline14, color: "--dsw-alias-label-secondary" },
+			{ id: "doing", label: "进行中", Icon: ui.IconLoadingOutline16, color: "--dsw-alias-brand-primary", spin: true },
+			{ id: "done", label: "已完成", Icon: ui.IconCheckOutline16, color: "--dsw-alias-state-success-primary" },
+			{ id: "blocked", label: "阻塞", Icon: ui.IconWarningOutline16, color: "--dsw-alias-state-error-primary" },
+			{ id: "waiting", label: "等待", Icon: ui.IconClockOutline16, color: "--dsw-alias-state-warn-primary" },
 		];
 		const PRIORITIES = [
-			{ id: "high", label: "高" },
-			{ id: "medium", label: "中" },
-			{ id: "low", label: "低" },
+			{ id: "high", label: "高", color: "--dsw-alias-state-error-primary" },
+			{ id: "medium", label: "中", color: "--dsw-alias-state-warn-primary" },
+			{ id: "low", label: "低", color: "--dsw-alias-label-secondary" },
 		];
-		const PRIORITY_TOKENS = {
-			high: "--dsw-alias-state-error-primary",
-			medium: "--dsw-alias-state-warn-primary",
-			low: "--dsw-alias-label-secondary",
-		};
 
-		const CSS = [
-			".wst-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border-radius:14px;border:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));background:transparent;color:var(--dsw-alias-label-primary,inherit);font-family:inherit;font-size:11px;line-height:16px;cursor:pointer}",
-			".wst-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))}",
-			'.wst-btn[aria-expanded="true"]{border-color:var(--dsw-alias-brand-primary,#4a9eff);background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))}',
-			".wst-badge{min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--dsw-alias-brand-primary,#4a9eff);color:#fff;font-size:10px;font-weight:600;line-height:15px;text-align:center}",
-			".wst-panel{position:fixed;z-index:40;pointer-events:auto;display:flex;flex-direction:column;max-height:min(72vh,660px);overflow:hidden;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.35));border-radius:12px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary,inherit);box-shadow:0 12px 32px rgba(0,0,0,.28);font-family:inherit;font-size:12px}",
-			".wst-head{display:flex;align-items:center;gap:6px;padding:9px 10px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.2))}",
-			".wst-title{font-size:13px;font-weight:600}",
-			".wst-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;text-align:left;cursor:pointer}",
-			".wst-path:hover{color:var(--dsw-alias-label-primary,inherit)}",
-			".wst-icon-btn{border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:13px;line-height:16px;padding:2px 6px;cursor:pointer}",
-			".wst-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary,inherit)}",
-			".wst-add{display:flex;gap:6px;padding:10px 10px 6px}",
-			".wst-input{flex:1;min-width:0;height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.35));border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.06));color:inherit;font-family:inherit;font-size:12px}",
-			".wst-input:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#4a9eff)}",
-			".wst-add-btn{height:28px;padding:0 12px;border:0;border-radius:8px;background:var(--dsw-alias-brand-primary,#4a9eff);color:#fff;font-family:inherit;font-size:12px;cursor:pointer}",
-			".wst-add-btn:disabled{opacity:.4;cursor:not-allowed}",
-			".wst-chips{display:flex;align-items:center;gap:4px;padding:0 10px 8px;font-size:11px;color:var(--dsw-alias-label-secondary,#888)}",
-			".wst-chip{border:0;border-radius:10px;background:transparent;color:inherit;font-family:inherit;font-size:11px;padding:2px 8px;cursor:pointer}",
-			".wst-chip:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))}",
-			".wst-chip-on{background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.18));color:var(--dsw-alias-label-primary,inherit);font-weight:600}",
-			".wst-grow{flex:1}",
-			".wst-err{color:var(--dsw-alias-state-error-primary,#e5534b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}",
-			".wst-list{flex:1;min-height:0;overflow:auto;margin:0;padding:0 6px 8px;list-style:none}",
-			".wst-row{display:flex;gap:6px;padding:6px 4px;border-radius:8px}",
-			".wst-row:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.09))}",
-			".wst-grip{padding-top:1px;color:var(--dsw-alias-label-secondary,#999);font-size:12px;line-height:18px;cursor:grab;user-select:none}",
-			".wst-main{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}",
-			".wst-line1{display:flex;align-items:center;gap:6px;min-width:0}",
-			".wst-name{min-width:0;max-width:100%;overflow:hidden;border:0;background:transparent;color:inherit;font-family:inherit;font-size:12px;text-align:left;text-overflow:ellipsis;white-space:nowrap;padding:0;cursor:copy}",
-			".wst-name:hover{text-decoration:underline}",
-			".wst-done .wst-name{color:var(--dsw-alias-label-secondary,#888);text-decoration:line-through}",
-			".wst-tag{flex:none;border:1px solid currentColor;border-radius:6px;color:var(--dsw-alias-label-secondary,#888);font-size:10px;line-height:14px;padding:0 5px}",
-			".wst-overdue{color:var(--dsw-alias-state-error-primary,#e5534b)}",
-			".wst-line2{display:flex;align-items:center;gap:4px;flex-wrap:wrap}",
-			".wst-select,.wst-date{height:22px;max-width:104px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.3));border-radius:6px;background:transparent;color:inherit;font-family:inherit;font-size:11px;padding:0 2px}",
-			".wst-date{max-width:118px}",
-			".wst-mini{border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;padding:1px 5px;cursor:pointer}",
-			".wst-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary,inherit)}",
-			".wst-del:hover{color:var(--dsw-alias-state-error-primary,#e5534b)}",
-			".wst-detail{display:flex;flex-direction:column;gap:6px;margin-top:2px;padding:6px 8px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.08))}",
-			".wst-notes{box-sizing:border-box;width:100%;min-height:48px;padding:4px 6px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.3));border-radius:6px;background:transparent;color:inherit;font-family:inherit;font-size:11px;resize:vertical}",
-			".wst-sublist{display:flex;flex-direction:column;gap:4px}",
-			".wst-sub{display:flex;align-items:center;gap:6px;font-size:11px}",
-			".wst-sub input[type=checkbox]{margin:0}",
-			".wst-sub-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-			".wst-sub-done{color:var(--dsw-alias-label-secondary,#888);text-decoration:line-through}",
-			".wst-subadd{height:24px;font-size:11px}",
-			".wst-foot{display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.2));color:var(--dsw-alias-label-secondary,#888);font-size:11px}",
-			".wst-toast{color:var(--dsw-alias-state-success-primary,#3fb950);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%}",
-			".wst-empty{padding:22px 12px;color:var(--dsw-alias-label-secondary,#888);font-size:12px;text-align:center}",
-		].join("");
+		const DEFAULT_STATUS = STATUSES[0];
+
+		/** The descriptor for a stored id, falling back to 待办 for hand-edited files. */
+		function statusOf(id) {
+			return STATUSES.find((entry) => entry.id === id) || DEFAULT_STATUS;
+		}
+
+		function priorityOf(id) {
+			return PRIORITIES.find((entry) => entry.id === id) || null;
+		}
+
+		/** One entry of the app's own status icon set, colored and (for 进行中) spinning. */
+		function StatusIcon(props) {
+			const status = statusOf(props.status);
+			const Icon = status.Icon;
+			if (typeof Icon !== "function") return null;
+			return react.createElement(Icon, {
+				size: props.size || 13,
+				className: status.spin === true && props.animate !== false ? "wst-spin" : undefined,
+				style: { color: "var(" + status.color + ")" },
+			});
+		}
+
+		/**
+		 * Panel stylesheet. Everything is expressed through the shell's own design
+		 * tokens (`--dsw-alias-*`) so the panel matches the app in both themes; the
+		 * only literal colors are fallbacks that keep it legible outside the shell.
+		 */
+		const CSS = `
+.wst-btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l2,rgba(128,128,128,.4));background:transparent;color:var(--dsw-alias-label-primary,inherit);font-family:inherit;font-size:11px;line-height:16px;cursor:pointer;transition:background .14s ease,border-color .14s ease,color .14s ease}
+.wst-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))}
+.wst-btn[aria-expanded="true"]{border-color:var(--dsw-alias-brand-primary,#4a9eff);background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))}
+.wst-badge{min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--dsw-alias-brand-primary,#4a9eff);color:#fff;font-size:10px;font-weight:600;line-height:16px;text-align:center}
+
+.wst-panel{position:fixed;z-index:40;pointer-events:auto;display:flex;flex-direction:column;width:max-content;max-height:min(72vh,660px);overflow:hidden;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22));border-radius:14px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary,inherit);box-shadow:0 16px 40px -12px rgba(0,0,0,.35),0 2px 8px -2px rgba(0,0,0,.18);font-family:inherit;font-size:12px;animation:wst-in .17s cubic-bezier(.2,.8,.2,1)}
+.wst-panel[data-state="closing"]{animation:wst-out .13s ease forwards}
+.wst-panel[data-state="open"] .wst-list{animation:wst-fade .2s ease}
+.wst-head{display:flex;align-items:center;gap:7px;padding:10px 11px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.16))}
+.wst-title{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;letter-spacing:.01em}
+.wst-count{color:var(--dsw-alias-label-secondary,#888);font-size:11px;font-weight:400}
+.wst-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;text-align:left;padding:2px 4px;cursor:copy;transition:background .14s ease,color .14s ease}
+.wst-path:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12));color:var(--dsw-alias-label-primary,inherit)}
+.wst-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;cursor:pointer;transition:background .14s ease,color .14s ease,transform .14s ease}
+.wst-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary,inherit)}
+.wst-icon-btn:active{transform:scale(.92)}
+
+.wst-add{display:flex;gap:6px;padding:10px 11px 8px}
+.wst-input{flex:1;min-width:0;height:30px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.32));border-radius:9px;background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.07));color:inherit;font-family:inherit;font-size:12px;transition:border-color .14s ease,box-shadow .14s ease,background .14s ease}
+.wst-input::placeholder{color:var(--dsw-alias-label-secondary,#999)}
+.wst-input:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#4a9eff);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary,#4a9eff) 22%,transparent)}
+.wst-add-btn{display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 11px;border:0;border-radius:9px;background:var(--dsw-alias-brand-primary,#4a9eff);color:#fff;font-family:inherit;font-size:12px;cursor:pointer;transition:opacity .14s ease,transform .14s ease}
+.wst-add-btn:hover:not(:disabled){opacity:.9}
+.wst-add-btn:active:not(:disabled){transform:scale(.97)}
+.wst-add-btn:disabled{opacity:.4;cursor:not-allowed}
+
+.wst-chips{display:flex;align-items:center;gap:4px;padding:0 11px 9px;font-size:11px;color:var(--dsw-alias-label-secondary,#888)}
+.wst-chip{border:0;border-radius:999px;background:transparent;color:inherit;font-family:inherit;font-size:11px;padding:3px 9px;cursor:pointer;transition:background .14s ease,color .14s ease}
+.wst-chip:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}
+.wst-chip-on{background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.18));color:var(--dsw-alias-label-primary,inherit);font-weight:600}
+.wst-grow{flex:1}
+.wst-err{color:var(--dsw-alias-state-error-primary,#e5534b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+
+.wst-list{flex:1;min-height:0;overflow:auto;margin:0;padding:0 7px 8px;list-style:none;scrollbar-gutter:stable}
+.wst-row{display:flex;gap:6px;padding:7px 5px;border-radius:10px;transition:background .14s ease,box-shadow .14s ease}
+.wst-row:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.08))}
+.wst-grip{display:inline-flex;align-items:center;padding-top:2px;color:var(--dsw-alias-label-secondary,#999);cursor:grab;user-select:none;opacity:.45;transition:opacity .14s ease}
+.wst-row:hover .wst-grip{opacity:1}
+.wst-grip:active{cursor:grabbing}
+.wst-main{display:flex;flex:1;min-width:0;flex-direction:column;gap:5px}
+.wst-line1{display:flex;align-items:center;gap:6px;min-width:0}
+.wst-name{min-width:0;max-width:100%;overflow:hidden;border:0;background:transparent;color:inherit;font-family:inherit;font-size:12px;text-align:left;text-overflow:ellipsis;white-space:nowrap;padding:0;border-radius:4px;cursor:copy;transition:color .14s ease}
+.wst-name:hover{color:var(--dsw-alias-brand-primary,#4a9eff)}
+.wst-row[data-done="true"] .wst-name{color:var(--dsw-alias-label-secondary,#888);text-decoration:line-through}
+.wst-tag{flex:none;border:1px solid currentColor;border-radius:999px;color:var(--dsw-alias-label-secondary,#888);font-size:10px;line-height:15px;padding:0 6px;opacity:.9}
+.wst-overdue{color:var(--dsw-alias-state-error-primary,#e5534b);opacity:1}
+.wst-line2{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+
+.wst-status{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 7px 0 5px;border:1px solid transparent;border-radius:999px;background:color-mix(in srgb,currentColor 11%,transparent);color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;cursor:pointer;transition:background .14s ease,color .14s ease}
+.wst-status:hover{background:color-mix(in srgb,currentColor 20%,transparent)}
+.wst-status svg{flex:none}
+.wst-prio{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border:1px dashed var(--dsw-alias-border-l2,rgba(128,128,128,.36));border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;cursor:pointer;transition:border-color .14s ease,background .14s ease}
+.wst-prio:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}
+.wst-prio-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.wst-date{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.3));border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-size:11px;transition:border-color .14s ease,background .14s ease}
+.wst-date:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}
+.wst-date input{width:92px;border:0;background:transparent;color:inherit;font:inherit;font-size:11px;padding:0;outline:none}
+.wst-mini{display:inline-flex;align-items:center;gap:4px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;padding:3px 7px;cursor:pointer;transition:background .14s ease,color .14s ease}
+.wst-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary,inherit)}
+.wst-del:hover{color:var(--dsw-alias-state-error-primary,#e5534b)}
+
+.wst-detail{display:flex;flex-direction:column;gap:7px;margin-top:3px;padding:8px 9px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.16));border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(128,128,128,.06));animation:wst-in .16s cubic-bezier(.2,.8,.2,1)}
+.wst-notes{box-sizing:border-box;width:100%;min-height:50px;padding:5px 7px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.28));border-radius:8px;background:transparent;color:inherit;font-family:inherit;font-size:11.5px;resize:vertical;transition:border-color .14s ease,box-shadow .14s ease}
+.wst-notes:focus{outline:none;border-color:var(--dsw-alias-brand-primary,#4a9eff);box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-brand-primary,#4a9eff) 18%,transparent)}
+.wst-sublist{display:flex;flex-direction:column;gap:5px}
+.wst-sub{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.wst-sub input[type=checkbox]{margin:0;accent-color:var(--dsw-alias-brand-primary,#4a9eff)}
+.wst-sub-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wst-sub-done{color:var(--dsw-alias-label-secondary,#888);text-decoration:line-through}
+.wst-subadd{height:26px;font-size:11.5px}
+
+.wst-foot{display:flex;align-items:center;gap:8px;padding:8px 11px;border-top:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.16));color:var(--dsw-alias-label-secondary,#888);font-size:11px}
+.wst-toast{display:inline-flex;align-items:center;gap:4px;color:var(--dsw-alias-state-success-primary,#3fb950);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;animation:wst-fade .18s ease}
+.wst-empty{display:flex;flex-direction:column;align-items:center;gap:7px;padding:26px 14px;color:var(--dsw-alias-label-secondary,#888);font-size:12px;text-align:center}
+.wst-empty svg{opacity:.5}
+
+.wst-spin{animation:wst-spin 1.05s linear infinite}
+@keyframes wst-in{from{opacity:0;transform:translateY(-4px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes wst-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-3px) scale(.99)}}
+@keyframes wst-fade{from{opacity:0}to{opacity:1}}
+@keyframes wst-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.wst-panel,.wst-panel[data-state],.wst-detail,.wst-toast,.wst-list,.wst-spin{animation:none!important}.wst-btn,.wst-chip,.wst-icon-btn,.wst-row,.wst-status,.wst-prio,.wst-date,.wst-mini,.wst-input,.wst-name{transition:none!important}}
+`;
+
+		/** Content-hashed style tag id, so a hot-reloaded stylesheet replaces the old one. */
+		function styleTagId(css) {
+			let hash = 5381;
+			for (let index = 0; index < css.length; index += 1) {
+				hash = ((hash * 33) ^ css.charCodeAt(index)) >>> 0;
+			}
+			return "@dsh-external/workspace-todo/panel." + hash.toString(36) + ".css";
+		}
 
 		(function installStyles() {
-			const tagId = "@dsh-external/workspace-todo/panel.css";
+			const tagId = styleTagId(CSS);
 			if (typeof document === "undefined") return;
 			if (document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") !== null) return;
+			// Drop this plugin's earlier stylesheets so an updated panel never inherits stale rules.
+			for (const stale of Array.from(document.querySelectorAll('style[data-plugin="@dsh-external/workspace-todo"]'))) {
+				stale.remove();
+			}
 			const tag = document.createElement("style");
 			tag.dataset.plugin = "@dsh-external/workspace-todo";
 			tag.dataset.pluginCss = tagId;
@@ -138,6 +213,10 @@ window.__ModuleLoader__.load({
 			dirty: false,
 			savedAt: 0,
 			open: false,
+			/** True while the exit animation runs, so the panel can still render its last frame. */
+			closing: false,
+			/** `<todo id>:<status|priority>` of the row menu that is open, or null. */
+			openMenu: null,
 			anchor: null,
 			/** The header button the panel hangs from, re-measured on resize. */
 			anchorElement: null,
@@ -519,20 +598,41 @@ window.__ModuleLoader__.load({
 
 		const dragState = { id: null };
 
+		/** The app's own checklist glyph for the header button and the panel title. */
 		function ChecklistIcon(props) {
-			const size = props && props.size ? props.size : 14;
+			const Icon = ui.IconChecklistOutline14;
+			if (typeof Icon !== "function") return null;
+			return react.createElement(Icon, { size: props && props.size ? props.size : 14 });
+		}
+
+		/** Six-dot drag handle, the grip every list UI of this shape uses. */
+		function GripIcon() {
+			const dots = [[5, 3], [5, 8], [11, 3], [11, 8], [5, 13], [11, 13]];
 			return react.createElement(
 				"svg",
-				{ width: size, height: size, viewBox: "0 0 16 16", fill: "none", "aria-hidden": "true", focusable: "false" },
-				react.createElement("path", { d: "M2 4.2 3.4 5.6 6 3", stroke: "currentColor", strokeWidth: "1.4", strokeLinecap: "round", strokeLinejoin: "round" }),
-				react.createElement("path", { d: "M2 11.2 3.4 12.6 6 10", stroke: "currentColor", strokeWidth: "1.4", strokeLinecap: "round", strokeLinejoin: "round" }),
-				react.createElement("path", { d: "M8 4.5h6M8 11.5h6", stroke: "currentColor", strokeWidth: "1.4", strokeLinecap: "round" }),
+				{ width: 16, height: 16, viewBox: "0 0 16 16", fill: "currentColor", "aria-hidden": "true", focusable: "false" },
+				dots.map(([cx, cy]) => react.createElement("circle", { key: String(cx) + "-" + String(cy), cx, cy, r: 1.15 })),
 			);
 		}
 
+		let closeTimer = null;
+
+		/** Close plays the exit animation first, so the panel never blinks out. */
 		function closePanel() {
 			flush();
-			emit({ open: false });
+			emit({ openMenu: null });
+			if (state.closing === true) return;
+			emit({ closing: true });
+			closeTimer = setTimeout(() => {
+				closeTimer = null;
+				emit({ open: false, closing: false });
+			}, CLOSE_MS);
+		}
+
+		function cancelClose() {
+			if (closeTimer === null) return;
+			clearTimeout(closeTimer);
+			closeTimer = null;
 		}
 
 		/** Where the panel hangs: under its button, kept inside the viewport. */
@@ -551,11 +651,12 @@ window.__ModuleLoader__.load({
 		}
 
 		function togglePanel(element, sessionId, dir) {
-			if (state.open === true && state.sessionId === sessionId) {
+			if (state.open === true && state.sessionId === sessionId && state.closing !== true) {
 				closePanel();
 				return;
 			}
-			emit({ open: true, sessionId, anchor: anchorFor(element), anchorElement: element ?? null });
+			cancelClose();
+			emit({ open: true, closing: false, openMenu: null, sessionId, anchor: anchorFor(element), anchorElement: element ?? null });
 			if (state.dir !== dir) void loadFor(sessionId, dir);
 		}
 
@@ -641,12 +742,15 @@ window.__ModuleLoader__.load({
 					? { boxShadow: "inset 0 -2px 0 0 var(--dsw-alias-brand-primary,#4a9eff)" }
 					: null;
 
+			const status = statusOf(todo.status);
+			const noteCount = (todo.subtasks || []).length + (todo.notes !== "" ? 1 : 0);
+			const menuId = props.menuKey;
+			const menuOpen = (name) => menuId === todo.id + ":" + name;
+			const setMenu = (name, next) => props.onMenuChange(next ? todo.id + ":" + name : null);
+
 			const tags = [
-				priority !== null
-					? react.createElement("span", { key: "priority", className: "wst-tag", style: { color: "var(" + PRIORITY_TOKENS[priority.id] + ")" }, title: "优先级" }, priority.label)
-					: null,
-				todo.due
-					? react.createElement("span", { key: "due", className: "wst-tag" + (overdue ? " wst-overdue" : ""), title: overdue ? "已逾期" : "截止日期" }, (overdue ? "逾期 " : "") + todo.due)
+				todo.due && overdue
+					? react.createElement("span", { key: "due", className: "wst-tag wst-overdue", title: "已逾期" }, "逾期 " + todo.due)
 					: null,
 				(todo.subtasks || []).length > 0
 					? react.createElement("span", { key: "subtasks", className: "wst-tag", title: "子任务完成数" }, String(doneSubtasks) + "/" + String(todo.subtasks.length))
@@ -660,39 +764,103 @@ window.__ModuleLoader__.load({
 				tags,
 			);
 
+			/** One status/priority pill that opens the app's own menu. */
+			const statusControl = react.createElement(ui.Menu, {
+				open: menuOpen("status"),
+				align: "start",
+				dense: true,
+				selection: "fill",
+				onClose: () => setMenu("status", false),
+				items: STATUSES.map((entry) => ({
+					id: entry.id,
+					label: entry.label,
+					icon: typeof entry.Icon === "function"
+						? react.createElement(entry.Icon, { size: 14, style: { color: "var(" + entry.color + ")" } })
+						: null,
+				})),
+				selectedId: todo.status,
+				onSelect: (id) => {
+					setMenu("status", false);
+					if (id !== todo.status) patchTodo(todo.id, { status: id });
+				},
+				anchor: react.createElement(
+					"button",
+					{
+						type: "button", className: "wst-status", title: "状态：" + status.label, "aria-label": "状态",
+						style: { color: "var(" + status.color + ")" }, "aria-haspopup": "menu", "aria-expanded": menuOpen("status"),
+						onClick: () => setMenu("status", !menuOpen("status")),
+					},
+					react.createElement(StatusIcon, { status: todo.status, size: 13 }),
+					react.createElement("span", null, status.label),
+					react.createElement(ui.IconChevronDownOutline14, { size: 10 }),
+				),
+			});
+
+			const priorityControl = react.createElement(ui.Menu, {
+				open: menuOpen("priority"),
+				align: "start",
+				dense: true,
+				selection: "fill",
+				onClose: () => setMenu("priority", false),
+				items: [
+					{ id: "", label: "无优先级", icon: null },
+					...PRIORITIES.map((entry) => ({
+						id: entry.id,
+						label: entry.label,
+						icon: react.createElement("span", { className: "wst-prio-dot", style: { color: "var(" + entry.color + ")", background: "currentColor" } }),
+					})),
+				],
+				selectedId: priority === null ? "" : priority.id,
+				onSelect: (id) => {
+					setMenu("priority", false);
+					patchTodo(todo.id, { priority: id === "" ? null : id });
+				},
+				anchor: react.createElement(
+					"button",
+					{
+						type: "button", className: "wst-prio", "aria-label": "优先级", "aria-haspopup": "menu", "aria-expanded": menuOpen("priority"),
+						title: priority === null ? "优先级：无" : "优先级：" + priority.label,
+						style: priority === null ? undefined : { color: "var(" + priority.color + ")" },
+						onClick: () => setMenu("priority", !menuOpen("priority")),
+					},
+					react.createElement("span", { className: "wst-prio-dot" }),
+					react.createElement("span", null, priority === null ? "优先级" : priority.label),
+				),
+			});
+
+			const whenControl = react.createElement(
+				"label",
+				{ className: "wst-date" + (overdue ? " wst-overdue" : ""), title: overdue ? "已逾期" : "截止日期" },
+				react.createElement(ui.IconAlarmClockOutline16, { size: 12 }),
+				react.createElement("input", {
+					type: "date", value: todo.due ? todo.due : "", "aria-label": "截止日期",
+					onChange: (event) => patchTodo(todo.id, { due: event.target.value === "" ? null : event.target.value }),
+				}),
+			);
+
 			const line2 = react.createElement(
 				"div",
 				{ className: "wst-line2" },
-				react.createElement(
-					"select",
-					{
-						className: "wst-select", value: todo.status, title: "状态", "aria-label": "状态",
-						onChange: (event) => patchTodo(todo.id, { status: event.target.value }),
-					},
-					STATUSES.map((entry) => react.createElement("option", { key: entry.id, value: entry.id }, entry.label)),
-				),
-				react.createElement(
-					"select",
-					{
-						className: "wst-select", value: priority === null ? "" : priority.id, title: "优先级", "aria-label": "优先级",
-						onChange: (event) => patchTodo(todo.id, { priority: event.target.value === "" ? null : event.target.value }),
-					},
-					react.createElement("option", { value: "" }, "优先级"),
-					PRIORITIES.map((entry) => react.createElement("option", { key: entry.id, value: entry.id }, entry.label)),
-				),
-				react.createElement("input", {
-					className: "wst-date", type: "date", value: todo.due ? todo.due : "", title: "截止日期", "aria-label": "截止日期",
-					onChange: (event) => patchTodo(todo.id, { due: event.target.value === "" ? null : event.target.value }),
-				}),
+				statusControl,
+				priorityControl,
+				whenControl,
 				react.createElement(
 					"button",
 					{
 						type: "button", className: "wst-mini", title: "备注与子任务", "aria-expanded": props.expanded ? "true" : "false",
 						onClick: props.onToggleDetail,
 					},
-					todo.notes !== "" || (todo.subtasks || []).length > 0 ? "备注 " + String((todo.notes !== "" ? 1 : 0) + (todo.subtasks || []).length) : "备注",
+					react.createElement(ui.IconListPenOutline16, { size: 12 }),
+					react.createElement("span", null, noteCount > 0 ? "备注 " + String(noteCount) : "备注"),
 				),
-				react.createElement("button", { type: "button", className: "wst-mini wst-del", title: "删除这条待办", "aria-label": "删除", onClick: () => removeTodo(todo.id) }, "删除"),
+				react.createElement(
+					"button",
+					{
+						type: "button", className: "wst-mini wst-del", title: "删除这条待办", "aria-label": "删除",
+						onClick: () => removeTodo(todo.id),
+					},
+					react.createElement(ui.IconTrashOutline16, { size: 12 }),
+				),
 			);
 
 			const detail = props.expanded
@@ -737,7 +905,7 @@ window.__ModuleLoader__.load({
 
 			return react.createElement(
 				"li",
-				{ className: "wst-row" + (done ? " wst-done" : ""), style, onDragOver, onDrop, onDragLeave },
+				{ className: "wst-row", "data-done": done ? "true" : "false", style, onDragOver, onDrop, onDragLeave },
 				react.createElement("span", {
 					className: "wst-grip", draggable: true, title: "拖动排序", "aria-hidden": "true",
 					onDragStart: (event) => {
@@ -753,7 +921,7 @@ window.__ModuleLoader__.load({
 						dragState.id = null;
 						setDropSide(null);
 					},
-				}, "⠿"),
+				}, react.createElement(GripIcon)),
 				react.createElement("div", { className: "wst-main" }, line1, line2, detail),
 			);
 		}
@@ -775,7 +943,14 @@ window.__ModuleLoader__.load({
 					closePanel();
 				};
 				const onKeyDown = (event) => {
-					if (event.key === "Escape") closePanel();
+					if (event.key === "Escape") {
+						// A row menu owns the first Escape; the panel closes on the next one.
+						if (state.openMenu !== null) {
+							emit({ openMenu: null });
+							return;
+						}
+						closePanel();
+					}
 				};
 				const onResize = () => emit({ anchor: anchorFor(state.anchorElement) });
 				document.addEventListener("mousedown", onPointerDown, true);
@@ -800,6 +975,22 @@ window.__ModuleLoader__.load({
 					window.removeEventListener("beforeunload", onUnload);
 				};
 			}, []);
+
+			/**
+			 * Native controls inside the panel (the date picker) follow the panel's
+			 * own surface instead of the OS preference, so they never render as a
+			 * glaring light or black widget against a themed panel.
+			 */
+			react.useEffect(() => {
+				const root = panelRef.current;
+				if (root === null || typeof window.getComputedStyle !== "function") return;
+				const background = window.getComputedStyle(root).backgroundColor || "";
+				const parts = background.match(/[\d.]+/g);
+				if (parts === null || parts.length < 3) return;
+				const [r, g, b] = parts.slice(0, 3).map(Number);
+				const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+				root.style.colorScheme = luminance < 0.5 ? "dark" : "light";
+			});
 
 			if (!open) return null;
 
@@ -826,16 +1017,21 @@ window.__ModuleLoader__.load({
 			const head = react.createElement(
 				"div",
 				{ className: "wst-head" },
-				react.createElement("span", { className: "wst-title" }, "待办"),
-				react.createElement("button", {
-					type: "button", className: "wst-path", title: "点击复制工作目录：" + String(snapshot.dir || ""),
-					onClick: () => copyText(snapshot.dir || ""),
-				}, snapshot.dir || "（尚未绑定工作目录）"),
+				react.createElement(
+					"span",
+					{ className: "wst-title" },
+					react.createElement(ChecklistIcon, { size: 14 }),
+					"待办",
+					react.createElement("span", { className: "wst-count" }, openCount > 0 ? "未完成 " + String(openCount) : "已清空"),
+				),
+				react.createElement("span", { className: "wst-grow" }),
 				react.createElement("button", {
 					type: "button", className: "wst-icon-btn", title: "从磁盘重新载入", "aria-label": "从磁盘重新载入",
 					onClick: () => void loadFor(snapshot.sessionId, snapshot.dir),
-				}, "↻"),
-				react.createElement("button", { type: "button", className: "wst-icon-btn", title: "关闭", "aria-label": "关闭", onClick: closePanel }, "×"),
+				}, react.createElement(ui.IconRefreshOutline16, { size: 13 })),
+				react.createElement("button", {
+					type: "button", className: "wst-icon-btn", title: "关闭", "aria-label": "关闭", onClick: closePanel,
+				}, react.createElement(ui.IconCloseOutline16, { size: 13 })),
 			);
 
 			const addRow = react.createElement(
@@ -850,7 +1046,12 @@ window.__ModuleLoader__.load({
 						commitDraft();
 					},
 				}),
-				react.createElement("button", { type: "button", className: "wst-add-btn", disabled: draft.trim() === "", onClick: commitDraft }, "添加"),
+				react.createElement(
+					"button",
+					{ type: "button", className: "wst-add-btn", disabled: draft.trim() === "", onClick: commitDraft },
+					react.createElement(ui.IconPlusOutline16, { size: 13 }),
+					react.createElement("span", null, "添加"),
+				),
 			);
 
 			const chip = (id, label, count) => react.createElement("button", {
@@ -865,6 +1066,10 @@ window.__ModuleLoader__.load({
 				chip("open", "未完成", openCount),
 				chip("done", "已完成", doneCount),
 				react.createElement("span", { className: "wst-grow" }),
+				react.createElement("button", {
+					type: "button", className: "wst-path", title: "点击复制工作目录：" + String(snapshot.dir || ""),
+					onClick: () => copyText(snapshot.dir || ""),
+				}, snapshot.dir || "（尚未绑定工作目录）"),
 				snapshot.error !== null ? react.createElement("span", { className: "wst-err", title: String(snapshot.error) }, String(snapshot.error)) : null,
 			);
 
@@ -875,12 +1080,19 @@ window.__ModuleLoader__.load({
 					? react.createElement(
 						"li",
 						{ className: "wst-empty" },
-						snapshot.loading ? "载入中…" : todos.length === 0 ? "还没有待办。输入内容后回车即可添加。" : "当前筛选下没有待办。",
+						react.createElement(ChecklistIcon, { size: 22 }),
+						react.createElement(
+							"span",
+							null,
+							snapshot.loading ? "载入中…" : todos.length === 0 ? "还没有待办。输入内容后回车即可添加。" : "当前筛选下没有待办。",
+						),
 					)
 					: visible.map((todo) => react.createElement(TodoRow, {
 						key: todo.id,
 						todo,
 						expanded: expanded[todo.id] === true,
+						menuKey: snapshot.openMenu,
+						onMenuChange: (key) => emit({ openMenu: key }),
 						onToggleDetail: () => setExpanded(Object.assign({}, expanded, { [todo.id]: expanded[todo.id] !== true })),
 					})),
 			);
@@ -908,7 +1120,10 @@ window.__ModuleLoader__.load({
 
 			return react.createElement(
 				"div",
-				{ className: "wst-panel", style: panelStyle, ref: panelRef, role: "dialog", "aria-label": "工作区待办清单" },
+				{
+					className: "wst-panel", style: panelStyle, ref: panelRef, role: "dialog", "aria-label": "工作区待办清单",
+					"data-state": snapshot.closing === true ? "closing" : "open",
+				},
 				head, addRow, chips, list, foot,
 			);
 		}

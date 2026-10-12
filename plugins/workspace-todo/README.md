@@ -44,6 +44,24 @@
 | 保存 | 改动后 350ms 自动落盘；关闭面板、切后台、关页面时立即冲刷 |
 | 外部改动 | 其它窗口或编辑器先改了文件时，保存被拒并提示“重新载入”，不静默覆盖 |
 
+## 外观与交互
+
+界面不是自己仿一套皮，而是直接使用 shell 自己的 UI 套件：
+
+- **`@deepseek-ai/dsh-client-ui-primitives`**：状态/优先级都用它的 `Menu` 渲染（与官方插件同一套圆角、投影、
+  开合动画与键盘行为），不再是原生 `<select>`。该模块在 shell 的冻结平台模块表里
+  （`window.__DSH_BOOT__` 的种子表），所以客户端半直接 `require` 即可，不需要声明 `dsh.client.inject`。
+- **图标用应用自带的图标集**（`IconQueueOutline14` / `IconLoadingOutline16` / `IconCheckOutline16` /
+  `IconWarningOutline16` / `IconClockOutline16` / `IconTrashOutline16` …），而不是外挂 Lucide：
+  这样线条粗细、尺寸档位与整个 GUI 一致；Lucide 也不在平台模块表里，只能内联路径数据，风格反而会割裂。
+- **颜色全部走主题令牌**（`--dsw-alias-*`）：状态色取自 `brand-primary` / `state-success-primary` /
+  `state-error-primary` / `state-warn-primary` / `label-secondary`，浅色与深色主题都自动正确，
+  不写死黑色或白色。
+- **原生控件跟随面板主题**：面板挂载时按自身背景亮度推导并设置 `color-scheme`，
+  日期选择器这类无法自绘的原生控件因此不会在深色主题下弹出刺眼的白底黑字。
+- **动效**：面板淡入/缩放进入与退出（退出先播完动画再卸载，不会闪断）、备注区展开动画、
+  状态“进行中”的图标持续旋转、按钮/行/胶囊的 hover 与按下过渡；`prefers-reduced-motion` 下全部关闭。
+
 ## 装配
 
 ```powershell
@@ -119,7 +137,7 @@ plugin_manager remove_bundle @dsh-external/workspace-todo
 - `lib/client.js` — 客户端半：顶栏按钮、浮层面板、共享 store、剪贴板、拖拽排序。
 - `cordis.patch.yml` — bundle 层插入行（`id: workspace-todo`）。
 - `test/host-routes.mjs` — 用镜像 `ctx.fs` 契约的桩驱动真实路由处理器（35 项）。
-- `test/client-smoke.mjs` — 迷你 React 渲染真实组件树，覆盖交互与保存队列（53 项）。
+- `test/client-smoke.mjs` — 迷你 React 渲染真实组件树，覆盖交互、UI 套件菜单与保存队列（66 项）。
 - `test/live-check.mjs` — 对运行中的 GUI 做活体检查（栅栏、错误码、真实写入往返）。
 
 ## 验证记录（2026-10-12）
@@ -127,7 +145,7 @@ plugin_manager remove_bundle @dsh-external/workspace-todo
 | 层面 | 证据 |
 | --- | --- |
 | Host 半（离线） | `test/host-routes.mjs` **35/35**：路径与输入校验、错误码映射、跨站栅栏、版本冲突、受保护创建、清空备份、沙箱写入边界 |
-| 客户端半（离线） | `test/client-smoke.mjs` **53/53**：渲染、状态/优先级/日期/备注/子任务、拖拽重排、复制、筛选、保存队列与并发编辑、工作区切换、备份提示 |
+| 客户端半（离线） | `test/client-smoke.mjs` **66/66**：渲染、应用 UI 套件的状态/优先级菜单与图标、日期/备注/子任务、拖拽重排、复制、筛选、保存队列与并发编辑、工作区切换、备份提示、面板进出场状态 |
 | 活体路由 | `test/live-check.mjs` **9/9**（GUI 运行于 `http://127.0.0.1:19387`）：跨站/外来 Origin 403、非法 JSON 400、项目路径映射、真实写入往返、`.dsh` 目录自动创建、过期版本 409 |
 | 客户端入场 | 启动图含 `@dsh-external/workspace-todo`，服务器返回的 combo bundle 即最新客户端半 |
 | 端到端 | GUI 中一次真实新增后，`<项目目录>/.dsh/todos.json` 出现在项目目录（该路径只可能由面板经这两条路由创建） |
@@ -141,6 +159,6 @@ plugin_manager remove_bundle @dsh-external/workspace-todo
 
 ```powershell
 node test\host-routes.mjs     # 35/35，无外部依赖
-node test\client-smoke.mjs    # 53/53，无外部依赖
+node test\client-smoke.mjs    # 66/66，无外部依赖
 node test\live-check.mjs <项目目录>   # 需 GUI 正在运行
 ```

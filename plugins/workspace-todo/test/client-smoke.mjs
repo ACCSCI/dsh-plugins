@@ -71,6 +71,7 @@ const documentStub = {
   head: { appendChild() {} },
   body: { appendChild() {}, removeChild() {} },
   querySelector: () => null,
+  querySelectorAll: () => [],
   createElement: () => ({ style: {}, dataset: {}, textContent: '', setAttribute() {}, appendChild() {}, remove() {}, select() {} }),
   addEventListener(type, handler) {
     this.listeners.set(type, handler)
@@ -141,6 +142,50 @@ define('fetch', async (url, init) => {
 })
 
 /* ------------------------------------------------------------------ */
+/* the shell's UI kit, stubbed                                        */
+/* ------------------------------------------------------------------ */
+
+const ICON_NAMES = [
+  'IconChecklistOutline14', 'IconQueueOutline14', 'IconLoadingOutline16', 'IconCheckOutline16',
+  'IconWarningOutline16', 'IconClockOutline16', 'IconChevronDownOutline14', 'IconAlarmClockOutline16',
+  'IconListPenOutline16', 'IconTrashOutline16', 'IconRefreshOutline16', 'IconCloseOutline16',
+  'IconPlusOutline16',
+]
+
+const uiStub = {}
+for (const name of ICON_NAMES) {
+  uiStub[name] = (props) => react.createElement('svg', {
+    'data-icon': name,
+    className: props ? props.className : undefined,
+    style: props ? props.style : undefined,
+    width: props ? props.size : undefined,
+    height: props ? props.size : undefined,
+  })
+}
+
+/**
+ * Mirrors the contract the shipped plugins use: `anchor` plus `items`, `selectedId`,
+ * `open`, `onClose`, and `onSelect`, with each item's `icon` rendered as given.
+ */
+uiStub.Menu = (props) => react.createElement(
+  'div',
+  { 'data-menu-state': props.open === true ? 'open' : 'closed' },
+  props.anchor,
+  props.open === true
+    ? react.createElement(
+      'div',
+      { className: 'stub-menu' },
+      (props.items ?? []).map((item) => react.createElement(
+        'button',
+        { key: item.id, type: 'button', 'data-menu-item': item.id, onClick: () => props.onSelect(item.id) },
+        item.icon,
+        item.label,
+      )),
+    )
+    : null,
+)
+
+/* ------------------------------------------------------------------ */
 /* load the bundle                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -155,6 +200,7 @@ function check(name, ok, detail) {
 
 const bundle = captured.factory((specifier) => {
   if (specifier === 'react') return react
+  if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return uiStub
   throw new Error(`harness: unexpected require(${specifier})`)
 })
 check('bundle registers the package id', captured.id === '@dsh-external/workspace-todo', captured.id)
@@ -309,18 +355,50 @@ panelTree.find((node) => typeof node.props.className === 'string' && node.props.
 await tick()
 check('clicking a title copies its plain text', clipboard === '写插件', clipboard)
 
-const statusSelect = panelTree.find((node) => node.type === 'select' && node.props['aria-label'] === '状态')
-statusSelect.props.onChange({ target: { value: 'blocked' } })
-panelTree = renderPanel()
-const statuses = panelTree.filter((node) => node.type === 'select' && node.props['aria-label'] === '状态').map((node) => node.props.value)
-check('status change reaches the list', statuses.includes('blocked'), JSON.stringify(statuses))
+/** Drive one of the app-kit menus the way a user does: open the trigger, pick an item. */
+const menuTrigger = (tree, label) => tree.find((node) => node.type === 'button' && node.props['aria-label'] === label)
+const pickMenuItem = (tree, id) => {
+  const item = tree.find((node) => node.type === 'button' && node.props['data-menu-item'] === id)
+  if (item === undefined) throw new Error(`harness: menu item ${id} is not rendered`)
+  item.props.onClick()
+}
 
-const prioritySelect = panelTree.find((node) => node.type === 'select' && node.props['aria-label'] === '优先级')
-prioritySelect.props.onChange({ target: { value: '' } })
+const statusPill = panelTree.find((node) => typeof node.props.className === 'string' && node.props.className.split(' ').includes('wst-status'))
+check('the row status is a themed pill, not a native select', statusPill !== undefined && panelTree.every((node) => node.type !== 'select'))
+check('the status pill carries the app status icon', panelTree.some((node) => node.props['data-icon'] === 'IconLoadingOutline16') && panelTree.some((node) => node.props['data-icon'] === 'IconCheckOutline16'))
+check('the status pill is colored from the token palette', statusPill !== undefined && typeof statusPill.props.style.color === 'string' && statusPill.props.style.color.startsWith('var(--dsw-alias-'))
+
+menuTrigger(panelTree, '状态').props.onClick()
+panelTree = renderPanel()
+const openStatusMenu = panelTree.find((node) => node.props['data-menu-state'] === 'open')
+check('the status trigger opens the app menu', openStatusMenu !== undefined)
+const statusItems = panelTree.filter((node) => typeof node.props['data-menu-item'] === 'string').map((node) => node.props['data-menu-item'])
+check('the menu offers all five statuses', statusItems.length === 5 && statusItems.includes('blocked'), JSON.stringify(statusItems))
+check('each status option carries its own icon', panelTree.filter((node) => typeof node.props['data-menu-item'] === 'string').every((node) => Array.isArray(node.props.children) && node.props.children[0] !== null))
+pickMenuItem(panelTree, 'blocked')
+panelTree = renderPanel()
+check('choosing a status reaches the list', textOf(panelTree).includes('阻塞'))
+const doingIconBefore = panelTree.filter((node) => node.props.className === 'wst-spin').length
+
+menuTrigger(panelTree, '状态').props.onClick()
+pickMenuItem(renderPanel(), 'doing')
+panelTree = renderPanel()
+const spinning = panelTree.filter((node) => node.props.className === 'wst-spin')
+check('进行中 renders a spinning icon', spinning.length === 1, `${String(doingIconBefore)} -> ${String(spinning.length)}`)
+check('the doing icon is the app loading glyph', spinning[0] !== undefined && spinning[0].props['data-icon'] === 'IconLoadingOutline16', spinning[0] ? String(spinning[0].props['data-icon']) : 'none')
+
+menuTrigger(panelTree, '优先级').props.onClick()
+panelTree = renderPanel()
+check('the priority trigger opens the app menu too', panelTree.filter((node) => node.props['data-menu-item'] !== undefined).length >= 4)
+pickMenuItem(panelTree, 'high')
+panelTree = renderPanel()
+const priorityPill = panelTree.find((node) => typeof node.props.className === 'string' && node.props.className.split(' ').includes('wst-prio'))
+check('priority shows a colored dot and label', priorityPill !== undefined && typeof priorityPill.props.style.color === 'string' && textOf([priorityPill]).includes('高'), textOf([priorityPill]))
+
 const dueInput = panelTree.find((node) => node.type === 'input' && node.props['aria-label'] === '截止日期')
 dueInput.props.onChange({ target: { value: '2030-05-06' } })
 panelTree = renderPanel()
-check('priority and due date accept new values', panelTree.some((node) => node.props['aria-label'] === '截止日期' && node.props.value === '2030-05-06'))
+check('the due date is kept', panelTree.some((node) => node.props['aria-label'] === '截止日期' && node.props.value === '2030-05-06'))
 
 const detailToggle = panelTree.find((node) => node.type === 'button' && node.props.title === '备注与子任务')
 detailToggle.props.onClick()
@@ -354,7 +432,8 @@ const savedBody = saveCall ? JSON.parse(saveCall.init.body) : null
 check('save carries the version token', savedBody !== null && savedBody.version === 'v1', JSON.stringify(savedBody && savedBody.version))
 check('save declares whether the panel believes the file exists', savedBody !== null && savedBody.exists === true, JSON.stringify(savedBody && savedBody.exists))
 check('save carries the reordered list', savedBody !== null && JSON.stringify(savedBody.todos.map((todo) => todo.title)) === JSON.stringify(['已完成项', '写插件', '新条目']), JSON.stringify(savedBody && savedBody.todos.map((todo) => todo.title)))
-check('save keeps the edited status and notes', savedBody !== null && savedBody.todos[1].status === 'blocked' && savedBody.todos[1].notes === '新的备注', JSON.stringify(savedBody && savedBody.todos[1]))
+check('save keeps the status, priority and due date the menus set', savedBody !== null && savedBody.todos[1].status === 'doing' && savedBody.todos[1].priority === 'high' && savedBody.todos[1].due === '2030-05-06', JSON.stringify(savedBody && savedBody.todos[1]))
+check('save keeps the edited notes', savedBody !== null && savedBody.todos[1].notes === '新的备注', JSON.stringify(savedBody && savedBody.todos[1].notes))
 check('an ordinary edit is not sent with keepalive', saveCall !== undefined && saveCall.init.keepalive === undefined)
 
 panelTree = renderPanel()
@@ -381,9 +460,13 @@ const headerProps = { sessionId: 'S1', useSessions }
 
 check('the button reports the open panel', findByClass(renderButtonWith(headerProps), 'wst-btn').props['aria-expanded'] === 'true')
 clickButton(headerProps)
-check('a second click closes the panel it opened', renderPanel().length === 0, 'panel still rendered')
+const closingPanel = findByClass(renderPanel(), 'wst-panel')
+check('a second click starts the exit animation', closingPanel !== undefined && closingPanel.props['data-state'] === 'closing', closingPanel ? String(closingPanel.props['data-state']) : 'no panel')
+await sleep(200)
+check('the panel unmounts once the exit animation ends', renderPanel().length === 0, 'panel still rendered')
 clickButton(headerProps)
 check('a third click reopens it', findByClass(renderPanel(), 'wst-panel') !== undefined)
+check('the reopened panel is in its open state', findByClass(renderPanel(), 'wst-panel').props['data-state'] === 'open')
 check('the reopened button reports itself expanded', findByClass(renderButtonWith(headerProps), 'wst-btn').props['aria-expanded'] === 'true')
 
 const typeNewTodo = (title) => {
