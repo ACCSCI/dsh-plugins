@@ -199,31 +199,49 @@ window.__ModuleLoader__.load({
 			}
 		}
 
-		const state = {
-			sessionId: null,
-			dir: null,
-			file: null,
-			version: null,
-			exists: false,
-			todos: [],
-			loading: false,
-			error: null,
-			conflict: false,
-			saving: false,
-			dirty: false,
-			savedAt: 0,
-			open: false,
-			/** True while the exit animation runs, so the panel can still render its last frame. */
-			closing: false,
-			/** `<todo id>:<status|priority>` of the row menu that is open, or null. */
-			openMenu: null,
-			anchor: null,
-			/** The header button the panel hangs from, re-measured on resize. */
-			anchorElement: null,
-			filter: readFilter(),
-			toast: null,
-		};
-		const listeners = new Set();
+		/**
+		 * The store lives on `globalThis`, not in module scope. A hot reload
+		 * materializes a second module instance while the first one's components
+		 * may still be mounted; a per-instance store would then let the button
+		 * write state the visible panel never reads, which looks exactly like a
+		 * button that does nothing. One shared store keeps both alive instances in
+		 * step, and a fresh page load just creates it once.
+		 */
+		const SHARED_KEY = "__dshWorkspaceTodoShared__";
+
+		function createShared() {
+			return {
+				state: {
+					sessionId: null,
+					dir: null,
+					file: null,
+					version: null,
+					exists: false,
+					todos: [],
+					loading: false,
+					error: null,
+					conflict: false,
+					saving: false,
+					dirty: false,
+					savedAt: 0,
+					open: false,
+					/** True while the exit animation runs, so the panel can still render its last frame. */
+					closing: false,
+					/** `<todo id>:<status|priority>` of the row menu that is open, or null. */
+					openMenu: null,
+					anchor: null,
+					/** The header button the panel hangs from, re-measured on resize. */
+					anchorElement: null,
+					filter: readFilter(),
+					toast: null,
+				},
+				listeners: new Set(),
+			};
+		}
+
+		const shared = (globalThis[SHARED_KEY] ??= createShared());
+		const state = shared.state;
+		const listeners = shared.listeners;
 
 		function emit(patch) {
 			Object.assign(state, patch);
@@ -281,7 +299,14 @@ window.__ModuleLoader__.load({
 			return payload;
 		}
 
-		let loadToken = 0;
+		/**
+		 * Save queue and load token also live in the shared object: the debounce
+		 * timer, the in-flight flag, and the edit/save sequence numbers must mean the
+		 * same thing to every live module instance, or a hot-swapped pair could
+		 * strand a write or let an older read win.
+		 */
+		shared.queue ??= { timer: null, saving: false, queued: false, editSeq: 0, savedSeq: 0, loadToken: 0 };
+		const queue = shared.queue;
 
 		async function loadFor(sessionId, dir) {
 			if (!dir) {
@@ -298,19 +323,19 @@ window.__ModuleLoader__.load({
 			 * the version the server actually holds.
 			 */
 			if (dir !== state.dir && pending()) {
-				if (saveTimer !== null) {
-					clearTimeout(saveTimer);
-					saveTimer = null;
+				if (queue.timer !== null) {
+					clearTimeout(queue.timer);
+					queue.timer = null;
 				}
 				await settleSave();
 				if (pending()) await saveNow();
 			}
-			const token = ++loadToken;
+			const token = ++queue.loadToken;
 			emit({ loading: true, error: null, conflict: false, sessionId: sessionId ?? null });
 			try {
 				const payload = await request("/state?dir=" + encodeURIComponent(dir));
-				if (token !== loadToken) return;
-				savedSeq = editSeq;
+				if (token !== queue.loadToken) return;
+				queue.savedSeq = queue.editSeq;
 				emit({
 					dir: typeof payload.dir === "string" ? payload.dir : dir,
 					file: typeof payload.file === "string" ? payload.file : null,
@@ -320,46 +345,40 @@ window.__ModuleLoader__.load({
 					loading: false, dirty: false, error: null, conflict: false, savedAt: Date.now(),
 				});
 			} catch (error) {
-				if (token !== loadToken) return;
+				if (token !== queue.loadToken) return;
 				emit({ loading: false, dir, todos: [], version: null, error: message(error) });
 			}
 		}
 
-		let saveTimer = null;
-		let saving = false;
-		let queued = false;
 		/**
-		 * Every edit bumps `editSeq`; a settled save records the sequence it
-		 * carried. `pending()` therefore stays exact when an edit lands while a
-		 * save is in flight — a boolean flag would be cleared by the older
-		 * response and quietly strand the newer edit.
+		 * Every edit bumps the edit sequence; a settled save records the sequence it
+		 * carried. `pending()` therefore stays exact when an edit lands while a save
+		 * is in flight — a boolean flag would be cleared by the older response and
+		 * quietly strand the newer edit.
 		 */
-		let editSeq = 0;
-		let savedSeq = 0;
-
 		function pending() {
-			return editSeq !== savedSeq;
+			return queue.editSeq !== queue.savedSeq;
 		}
 
 		/** Wait for an in-flight write to settle so the next snapshot starts from a fresh version. */
 		async function settleSave() {
-			while (saving) await new Promise((resolve) => setTimeout(resolve, 30));
+			while (queue.saving) await new Promise((resolve) => setTimeout(resolve, 30));
 		}
 
 		function scheduleSave() {
-			editSeq += 1;
+			queue.editSeq += 1;
 			emit({ dirty: true });
-			if (saveTimer !== null) clearTimeout(saveTimer);
-			saveTimer = setTimeout(() => {
-				saveTimer = null;
+			if (queue.timer !== null) clearTimeout(queue.timer);
+			queue.timer = setTimeout(() => {
+				queue.timer = null;
 				void saveNow();
 			}, SAVE_DEBOUNCE_MS);
 		}
 
 		function flush(keepalive) {
-			if (saveTimer !== null) {
-				clearTimeout(saveTimer);
-				saveTimer = null;
+			if (queue.timer !== null) {
+				clearTimeout(queue.timer);
+				queue.timer = null;
 			}
 			if (pending()) void saveNow(keepalive === true ? { keepalive: true } : undefined);
 		}
@@ -372,13 +391,13 @@ window.__ModuleLoader__.load({
 		const KEEPALIVE_MAX_BYTES = 60000;
 
 		async function saveNow(options) {
-			if (saving) {
-				queued = true;
+			if (queue.saving) {
+				queue.queued = true;
 				return;
 			}
 			const dir = state.dir;
 			if (!dir) return;
-			const seq = editSeq;
+			const seq = queue.editSeq;
 			const todos = state.todos;
 			const version = state.version;
 			/*
@@ -391,11 +410,11 @@ window.__ModuleLoader__.load({
 			if (options !== undefined && options.keepalive === true && body.length <= KEEPALIVE_MAX_BYTES) {
 				init.keepalive = true;
 			}
-			saving = true;
+			queue.saving = true;
 			emit({ saving: true });
 			try {
 				const payload = await request("/save", init);
-				savedSeq = seq;
+				queue.savedSeq = seq;
 				emit({
 					saving: false, dirty: pending(), conflict: false, error: null,
 					version: typeof payload.version === "string" ? payload.version : state.version,
@@ -408,15 +427,15 @@ window.__ModuleLoader__.load({
 				}
 			} catch (error) {
 				if (error && error.code === "conflict") {
-					savedSeq = editSeq;
+					queue.savedSeq = queue.editSeq;
 					emit({ saving: false, dirty: false, conflict: true, error: message(error) });
 				} else {
 					emit({ saving: false, error: "保存失败：" + message(error) });
 				}
 			} finally {
-				saving = false;
-				if (queued) {
-					queued = false;
+				queue.saving = false;
+				if (queue.queued) {
+					queue.queued = false;
 					void saveNow();
 				}
 			}
