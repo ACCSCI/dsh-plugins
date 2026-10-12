@@ -23,6 +23,14 @@ window.__ModuleLoader__.load({
 		 */
 		const ui = require("@deepseek-ai/dsh-client-ui-primitives");
 
+		/** `react-dom` (also a platform seed) is only needed for portaled surfaces. */
+		let reactDom = null;
+		try {
+			reactDom = require("react-dom");
+		} catch {
+			reactDom = null;
+		}
+
 		/**
 		 * Icons are resolved by BASE name, never by an exact export name. Shipped
 		 * builds disagree on the suffix — one shell exports `IconPlusOutline16`,
@@ -166,9 +174,21 @@ window.__ModuleLoader__.load({
 .wst-prio{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border:1px dashed var(--dsw-alias-border-l2,rgba(128,128,128,.36));border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;cursor:pointer;transition:border-color .14s ease,background .14s ease}
 .wst-prio:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}
 .wst-prio-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
-.wst-date{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.3));border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-size:11px;transition:border-color .14s ease,background .14s ease}
+.wst-date{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.3));border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;cursor:pointer;transition:border-color .14s ease,background .14s ease}
 .wst-date:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}
-.wst-date input{width:92px;border:0;background:transparent;color:inherit;font:inherit;font-size:11px;padding:0;outline:none}
+.wst-date-host{display:inline-flex}
+.wst-cal{position:fixed;z-index:60;width:244px;padding:8px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22));border-radius:12px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary,inherit);box-shadow:0 16px 40px -12px rgba(0,0,0,.35),0 2px 8px -2px rgba(0,0,0,.18);font-family:inherit;font-size:12px;animation:wst-in .14s cubic-bezier(.2,.8,.2,1)}
+.wst-cal-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+.wst-cal-title{font-size:12px;font-weight:600;letter-spacing:.01em}
+.wst-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.wst-cal-weekday{display:flex;align-items:center;justify-content:center;height:20px;color:var(--dsw-alias-label-secondary,#999);font-size:10px}
+.wst-cal-day{display:flex;align-items:center;justify-content:center;height:26px;border:0;border-radius:8px;background:transparent;color:inherit;font-family:inherit;font-size:11.5px;cursor:pointer;transition:background .12s ease,color .12s ease,box-shadow .12s ease}
+.wst-cal-day:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.16))}
+.wst-cal-out{color:var(--dsw-alias-label-secondary,#999);opacity:.55}
+.wst-cal-today{box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l2,rgba(128,128,128,.5))}
+.wst-cal-on{background:var(--dsw-alias-brand-primary,#4a9eff);color:#fff;font-weight:600}
+.wst-cal-on:hover{background:var(--dsw-alias-brand-primary,#4a9eff)}
+.wst-cal-foot{display:flex;align-items:center;gap:4px;margin-top:7px;padding-top:7px;border-top:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.16))}
 .wst-mini{display:inline-flex;align-items:center;gap:4px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#888);font-family:inherit;font-size:11px;padding:3px 7px;cursor:pointer;transition:background .14s ease,color .14s ease}
 .wst-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));color:var(--dsw-alias-label-primary,inherit)}
 .wst-del:hover{color:var(--dsw-alias-state-error-primary,#e5534b)}
@@ -198,7 +218,7 @@ window.__ModuleLoader__.load({
 @keyframes wst-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-3px) scale(.99)}}
 @keyframes wst-fade{from{opacity:0}to{opacity:1}}
 @keyframes wst-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.wst-panel,.wst-panel[data-state],.wst-detail,.wst-toast,.wst-list,.wst-spin{animation:none!important}.wst-btn,.wst-chip,.wst-icon-btn,.wst-row,.wst-status,.wst-prio,.wst-date,.wst-mini,.wst-input,.wst-name{transition:none!important}}
+@media (prefers-reduced-motion:reduce){.wst-panel,.wst-panel[data-state],.wst-detail,.wst-toast,.wst-list,.wst-spin,.wst-cal,.wst-menu{animation:none!important}.wst-btn,.wst-chip,.wst-icon-btn,.wst-row,.wst-status,.wst-prio,.wst-date,.wst-mini,.wst-input,.wst-name,.wst-cal-day,.wst-menu-item{transition:none!important}}
 `;
 
 		/** Content-hashed style tag id, so a hot-reloaded stylesheet replaces the old one. */
@@ -654,6 +674,59 @@ window.__ModuleLoader__.load({
 			}
 		}
 
+		function pad2(value) {
+			return value < 10 ? "0" + String(value) : String(value);
+		}
+
+		/** One calendar day as a plain local date (no time zone drift). */
+		function isoOfDay(year, month, day) {
+			return String(year) + "-" + pad2(month + 1) + "-" + pad2(day);
+		}
+
+		/** `YYYY-MM-DD` back to its parts, or null for anything else. */
+		function parseDay(value) {
+			const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof value === "string" ? value : "");
+			if (match === null) return null;
+			return { year: Number(match[1]), month: Number(match[2]) - 1, day: Number(match[3]) };
+		}
+
+		/** Compact chip label: the year only appears when it is not the current one. */
+		function dayLabel(value) {
+			const parts = parseDay(value);
+			if (parts === null) return "";
+			const thisYear = new Date().getFullYear();
+			const head = parts.year === thisYear ? "" : String(parts.year) + "年";
+			return head + String(parts.month + 1) + "月" + String(parts.day) + "日";
+		}
+
+		function shiftDay(value, days) {
+			const parts = parseDay(value) || parseDay(todayKey());
+			const date = new Date(parts.year, parts.month, parts.day + days);
+			return isoOfDay(date.getFullYear(), date.getMonth(), date.getDate());
+		}
+
+		function shiftMonth(year, month, delta) {
+			const date = new Date(year, month + delta, 1);
+			return { year: date.getFullYear(), month: date.getMonth() };
+		}
+
+		/** Six weeks of cells beginning on the Sunday on or before the first of the month. */
+		function monthCells(year, month) {
+			const first = new Date(year, month, 1);
+			const cells = [];
+			for (let index = 0; index < 42; index += 1) {
+				const date = new Date(year, month, 1 - first.getDay() + index);
+				cells.push({
+					key: isoOfDay(date.getFullYear(), date.getMonth(), date.getDate()),
+					day: date.getDate(),
+					inMonth: date.getMonth() === month && date.getFullYear() === year,
+				});
+			}
+			return cells;
+		}
+
+		const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
+
 		/* ------------------------------------------------------------------ */
 		/* components                                                          */
 		/* ------------------------------------------------------------------ */
@@ -673,6 +746,170 @@ window.__ModuleLoader__.load({
 				{ width: 16, height: 16, viewBox: "0 0 16 16", fill: "currentColor", "aria-hidden": "true", focusable: "false" },
 				dots.map(([cx, cy]) => react.createElement("circle", { key: String(cx) + "-" + String(cy), cx, cy, r: 1.15 })),
 			);
+		}
+
+		/**
+		 * The due-date picker: a themed month calendar in a portaled popover.
+		 *
+		 * The kit ships no calendar, and the native `<input type="date">` popup is
+		 * drawn by the OS — it cannot follow the app's theme at all. This keeps the
+		 * same value format (`YYYY-MM-DD`) and the same escape hatch the menus use:
+		 * the panel clips its overflow, so the calendar renders through the frame.
+		 */
+		function DateField(props) {
+			const todo = props.todo;
+			const open = props.open === true;
+			const anchorRef = react.useRef(null);
+			const panelRef = react.useRef(null);
+			const today = todayKey();
+			const selected = typeof todo.due === "string" ? todo.due : null;
+			const anchorDay = parseDay(selected) || parseDay(today);
+			const [view, setView] = react.useState({ year: anchorDay.year, month: anchorDay.month });
+			const [position, setPosition] = react.useState(null);
+
+			// Follow the value: selecting a day (or clearing it) re-centers the view.
+			react.useEffect(() => {
+				const parts = parseDay(selected) || parseDay(todayKey());
+				setView({ year: parts.year, month: parts.month });
+			}, [selected]);
+
+			react.useEffect(() => {
+				if (!open) {
+					setPosition(null);
+					return undefined;
+				}
+				const place = () => {
+					const anchor = anchorRef.current;
+					if (anchor === null) return;
+					const rect = anchor.getBoundingClientRect();
+					const panel = panelRef.current;
+					const width = panel === null ? 244 : panel.offsetWidth || 244;
+					const height = panel === null ? 292 : panel.offsetHeight || 292;
+					const margin = 12;
+					const viewportWidth = Number.isFinite(window.innerWidth) ? window.innerWidth : 1024;
+					const viewportHeight = Number.isFinite(window.innerHeight) ? window.innerHeight : 720;
+					const left = Math.min(Math.max(rect.left, margin), Math.max(margin, viewportWidth - width - margin));
+					const below = rect.bottom + 6;
+					const top = below + height > viewportHeight - margin ? Math.max(margin, rect.top - height - 6) : below;
+					setPosition((current) => (current !== null && current.left === left && current.top === top ? current : { left, top }));
+				};
+				place();
+				window.addEventListener("resize", place);
+				window.addEventListener("scroll", place, true);
+				let observer = null;
+				if (typeof ResizeObserver === "function" && panelRef.current !== null) {
+					observer = new ResizeObserver(place);
+					observer.observe(panelRef.current);
+				}
+				return () => {
+					window.removeEventListener("resize", place);
+					window.removeEventListener("scroll", place, true);
+					if (observer !== null) observer.disconnect();
+				};
+			}, [open]);
+
+			react.useEffect(() => {
+				if (!open) return undefined;
+				const onPointerDown = (event) => {
+					const target = event.target;
+					if (anchorRef.current !== null && target instanceof Node && anchorRef.current.contains(target)) return;
+					if (panelRef.current !== null && target instanceof Node && panelRef.current.contains(target)) return;
+					props.onOpenChange(false);
+				};
+				document.addEventListener("pointerdown", onPointerDown, true);
+				return () => document.removeEventListener("pointerdown", onPointerDown, true);
+			}, [open]);
+
+			// Land focus on the chosen day (or today) so the grid is keyboard-ready.
+			react.useEffect(() => {
+				if (!open || panelRef.current === null) return;
+				const focusKey = selected || today;
+				const cell = panelRef.current.querySelector('[data-day="' + focusKey + '"]');
+				if (cell !== null && typeof cell.focus === "function") cell.focus();
+			}, [open, selected, view.year, view.month]);
+
+			const onGridKeyDown = (event) => {
+				const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" ? -7 : event.key === "ArrowDown" ? 7 : 0;
+				if (step === 0) return;
+				const from = document.activeElement;
+				const current = from instanceof HTMLElement ? from.getAttribute("data-day") : null;
+				if (current === null) return;
+				event.preventDefault();
+				const next = shiftDay(current, step);
+				const parts = parseDay(next);
+				setView({ year: parts.year, month: parts.month });
+				const target = panelRef.current === null ? null : panelRef.current.querySelector('[data-day="' + next + '"]');
+				if (target !== null && typeof target.focus === "function") target.focus();
+			};
+
+			const cells = monthCells(view.year, view.month);
+			const chip = react.createElement(
+				"button",
+				{
+					type: "button", ref: anchorRef, className: "wst-date" + (props.overdue === true ? " wst-overdue" : ""),
+					title: props.overdue === true ? "已逾期" : "截止日期", "aria-label": "截止日期",
+					"aria-haspopup": "dialog", "aria-expanded": open === true,
+					onClick: () => props.onOpenChange(!open),
+				},
+				iconOf("AlarmClock", { size: 12 }),
+				react.createElement("span", null, selected === null ? "截止日期" : dayLabel(selected)),
+			);
+
+			if (open !== true) return chip;
+
+			const surface = react.createElement(
+				"div",
+				{
+					className: "wst-cal", ref: panelRef, role: "dialog", "aria-label": "选择截止日期",
+					"data-wst-surface": "date",
+					style: position === null ? { left: 0, top: 0, visibility: "hidden" } : { left: position.left, top: position.top },
+				},
+				react.createElement(
+					"div",
+					{ className: "wst-cal-head" },
+					react.createElement("button", {
+						type: "button", className: "wst-icon-btn", "aria-label": "上个月",
+						onClick: () => setView((current) => shiftMonth(current.year, current.month, -1)),
+					}, iconOf("ChevronLeft", { size: 13 })),
+					react.createElement("span", { className: "wst-cal-title" }, String(view.year) + "年" + String(view.month + 1) + "月"),
+					react.createElement("button", {
+						type: "button", className: "wst-icon-btn", "aria-label": "下个月",
+						onClick: () => setView((current) => shiftMonth(current.year, current.month, 1)),
+					}, iconOf("ChevronRight", { size: 13 })),
+				),
+				react.createElement(
+					"div",
+					{ className: "wst-cal-grid", onKeyDown: onGridKeyDown },
+					WEEKDAYS.map((label) => react.createElement("span", { key: label, className: "wst-cal-weekday" }, label)),
+					cells.map((cell) => react.createElement(
+						"button",
+						{
+							key: cell.key, type: "button", "data-day": cell.key,
+							className: "wst-cal-day"
+								+ (cell.inMonth ? "" : " wst-cal-out")
+								+ (cell.key === today ? " wst-cal-today" : "")
+								+ (cell.key === selected ? " wst-cal-on" : ""),
+							"aria-pressed": cell.key === selected, "aria-label": dayLabel(cell.key),
+							onClick: () => props.onSelect(cell.key),
+						},
+						String(cell.day),
+					)),
+				),
+				react.createElement(
+					"div",
+					{ className: "wst-cal-foot" },
+					react.createElement("button", { type: "button", className: "wst-mini", onClick: () => props.onSelect(today) }, "今天"),
+					react.createElement("button", { type: "button", className: "wst-mini", onClick: () => props.onSelect(shiftDay(today, 1)) }, "明天"),
+					react.createElement("span", { className: "wst-grow" }),
+					react.createElement("button", { type: "button", className: "wst-mini", onClick: () => props.onSelect(null) }, "清除"),
+				),
+			);
+
+			const host = typeof document === "undefined" ? null : document.body;
+			if (host !== null && reactDom !== null && typeof reactDom.createPortal === "function") {
+				return react.createElement("span", { className: "wst-date-host" }, chip, reactDom.createPortal(surface, host));
+			}
+			return react.createElement("span", { className: "wst-date-host" }, chip, surface);
 		}
 
 		/**
@@ -918,15 +1155,16 @@ window.__ModuleLoader__.load({
 				),
 			});
 
-			const whenControl = react.createElement(
-				"label",
-				{ className: "wst-date" + (overdue ? " wst-overdue" : ""), title: overdue ? "已逾期" : "截止日期" },
-				iconOf("AlarmClock", { size: 12 }),
-				react.createElement("input", {
-					type: "date", value: todo.due ? todo.due : "", "aria-label": "截止日期",
-					onChange: (event) => patchTodo(todo.id, { due: event.target.value === "" ? null : event.target.value }),
-				}),
-			);
+			const whenControl = react.createElement(DateField, {
+				todo,
+				overdue,
+				open: menuOpen("date"),
+				onOpenChange: (next) => setMenu("date", next),
+				onSelect: (day) => {
+					setMenu("date", false);
+					patchTodo(todo.id, { due: day });
+				},
+			});
 
 			const line2 = react.createElement(
 				"div",
@@ -1031,11 +1269,11 @@ window.__ModuleLoader__.load({
 					if (panelRef.current !== null && target instanceof Node && panelRef.current.contains(target)) return;
 					if (target instanceof Element && target.closest("[data-wst-trigger]") !== null) return;
 					/*
-					 * A row menu renders through the frame layer, so its rows live
-					 * outside this panel: without this guard, picking an option would
-					 * close the panel it belongs to.
+					 * A row menu — and the due-date calendar — render through the frame
+					 * layer, so their rows live outside this panel: without this guard,
+					 * picking an option would close the panel it belongs to.
 					 */
-					if (target instanceof Element && target.closest('[role="menu"]') !== null) return;
+					if (target instanceof Element && target.closest('[role="menu"], [data-wst-surface]') !== null) return;
 					closePanel();
 				};
 				const onKeyDown = (event) => {

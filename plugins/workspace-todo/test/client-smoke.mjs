@@ -21,8 +21,10 @@ import vm from 'node:vm'
 /* a tiny React                                                       */
 /* ------------------------------------------------------------------ */
 
-const hookStore = new WeakMap()
+/** Hook state is keyed by render path, the way React keys it per fiber. */
+const hookStore = new Map()
 let current = null
+let currentPath = 'root'
 let slot = 0
 
 const react = {
@@ -31,7 +33,7 @@ const react = {
     return { type, props: Object.assign({}, props, { children: flat }) }
   },
   useState(initial) {
-    const store = hookStore.get(current)
+    const store = hookStore.get(currentPath)
     const index = slot++
     if (store.length <= index) store[index] = typeof initial === 'function' ? initial() : initial
     return [store[index], (value) => {
@@ -39,19 +41,28 @@ const react = {
     }]
   },
   useReducer(reducer, initial) {
-    const store = hookStore.get(current)
+    const store = hookStore.get(currentPath)
     const index = slot++
     if (store.length <= index) store[index] = initial
     return [store[index], () => {}]
   },
   useRef(initial) {
-    const store = hookStore.get(current)
+    const store = hookStore.get(currentPath)
     const index = slot++
     if (store.length <= index) store[index] = { current: initial }
     return store[index]
   },
-  /** Effects run on every render: dep tracking is not modeled. */
-  useEffect(effect) {
+  /** Effects honor their dependency list, the way React does. */
+  useEffect(effect, deps) {
+    const store = hookStore.get(currentPath)
+    const index = slot++
+    const previous = store[index]
+    const changed = deps === undefined
+      || previous === undefined
+      || previous.length !== deps.length
+      || deps.some((value, position) => !Object.is(value, previous[position]))
+    if (!changed) return
+    store[index] = deps === undefined ? [] : deps.slice()
     const cleanup = effect()
     if (typeof cleanup === 'function') cleanups.push(cleanup)
   },
@@ -167,7 +178,7 @@ define('fetch', async (url, init) => {
 
 /** The icon bases the plugin asks for, decoupled from any one export name. */
 const ICON_BASES = [
-  'Checklist', 'Queue', 'Loading', 'Check', 'Warning', 'Clock', 'ChevronDown',
+  'Checklist', 'Queue', 'Loading', 'Check', 'Warning', 'Clock', 'ChevronDown', 'ChevronLeft', 'ChevronRight',
   'AlarmClock', 'ListPen', 'Trash', 'Refresh', 'Close', 'Plus',
 ]
 
@@ -231,6 +242,8 @@ function check(name, ok, detail) {
 const bundle = captured.factory((specifier) => {
   if (specifier === 'react') return react
   if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return activeUi
+  // The calendar portals through react-dom; the harness renders the portal inline.
+  if (specifier === 'react-dom') return { createPortal: (element) => element }
   throw new Error(`harness: unexpected require(${specifier})`)
 })
 check('bundle registers the package id', captured.id === '@dsh-external/workspace-todo', captured.id)
@@ -262,30 +275,47 @@ check('client inject list is [slots]', Array.isArray(bundle.inject) && bundle.in
 /* expand the returned element tree                                   */
 /* ------------------------------------------------------------------ */
 
-function expand(node, out = []) {
+function childPath(parentPath, child, index) {
+  if (child === null || child === undefined || typeof child === 'boolean') return parentPath + '/void' + String(index)
+  if (typeof child === 'object' && child.props && child.props.key !== undefined) return parentPath + '/' + String(child.props.key)
+  return parentPath + '/' + String(index)
+}
+
+function expand(node, out = [], path = 'root') {
   if (node === null || node === undefined || typeof node === 'boolean') return out
   if (Array.isArray(node)) {
-    for (const child of node) expand(child, out)
+    node.forEach((child, index) => expand(child, out, path + '/' + String(index)))
     return out
   }
   if (typeof node !== 'object') return out
   if (typeof node.type === 'function') {
     const previous = current
+    const previousPath = currentPath
     current = node.type
+    currentPath = path + ':' + (node.type.name || 'anonymous')
     slot = 0
-    if (!hookStore.has(node.type)) hookStore.set(node.type, [])
+    if (!hookStore.has(currentPath)) hookStore.set(currentPath, [])
     let rendered
     try {
       rendered = node.type(node.props)
     } finally {
       current = previous
+      currentPath = previousPath
     }
-    expand(rendered, out)
+    expand(rendered, out, currentPathOf(path, node))
     return out
   }
   out.push(node)
-  expand(node.props ? node.props.children : null, out)
+  const children = node.props ? node.props.children : null
+  const list = Array.isArray(children) ? children : [children]
+  list.forEach((child, index) => expand(child, out, childPath(path, child, index)))
   return out
+}
+
+/** The path segment a rendered subtree keeps across renders. */
+function currentPathOf(parentPath, node) {
+  if (node.props && node.props.key !== undefined) return parentPath + '/' + String(node.props.key)
+  return parentPath
 }
 
 function renderButton() {
@@ -430,10 +460,45 @@ panelTree = renderPanel()
 const priorityPill = panelTree.find((node) => typeof node.props.className === 'string' && node.props.className.split(' ').includes('wst-prio'))
 check('priority shows a colored dot and label', priorityPill !== undefined && typeof priorityPill.props.style.color === 'string' && textOf([priorityPill]).includes('高'), textOf([priorityPill]))
 
-const dueInput = panelTree.find((node) => node.type === 'input' && node.props['aria-label'] === '截止日期')
-dueInput.props.onChange({ target: { value: '2030-05-06' } })
+/* --- the due-date calendar ---------------------------------------- */
+
+const dateChip = panelTree.find((node) => node.type === 'button' && node.props['aria-label'] === '截止日期')
+check('the due date is a themed chip, not a native date input', dateChip !== undefined && panelTree.every((node) => node.type !== 'input' || node.props.type !== 'date'))
+dateChip.props.onClick()
 panelTree = renderPanel()
-check('the due date is kept', panelTree.some((node) => node.props['aria-label'] === '截止日期' && node.props.value === '2030-05-06'))
+const calendar = panelTree.find((node) => node.props['data-wst-surface'] === 'date')
+check('clicking the chip opens the calendar popover', calendar !== undefined)
+check('the calendar asks for the frame-layer surface too', calendar !== undefined && calendar.props.role === 'dialog')
+const dayCells = panelTree.filter((node) => typeof node.props['data-day'] === 'string')
+check('the calendar lays out six weeks plus a weekday header', dayCells.length === 42 && panelTree.filter((node) => typeof node.props.className === 'string' && node.props.className === 'wst-cal-weekday').length === 7, String(dayCells.length))
+check('the calendar offers 今天 / 明天 / 清除', ['今天', '明天', '清除'].every((label) => panelTree.some((node) => node.type === 'button' && textOf([node]).trim() === label)))
+
+const monthTitle = () => textOf([panelTree.find((node) => typeof node.props.className === 'string' && node.props.className === 'wst-cal-title')]).trim()
+const before = monthTitle()
+panelTree.find((node) => node.type === 'button' && node.props['aria-label'] === '下个月').props.onClick()
+panelTree = renderPanel()
+const after = monthTitle()
+check('the month can be paged forward and back', before !== after && /年\d+月/.test(after), `${before} -> ${after}`)
+panelTree.find((node) => node.type === 'button' && node.props['aria-label'] === '上个月').props.onClick()
+panelTree = renderPanel()
+check('paging back returns to the starting month', monthTitle() === before, `${after} -> ${monthTitle()}`)
+
+const inMonthCells = panelTree.filter((node) => typeof node.props['data-day'] === 'string' && String(node.props.className).includes('wst-cal-out') === false)
+const target = inMonthCells[14]
+const pickedDay = target.props['data-day']
+target.props.onClick()
+panelTree = renderPanel()
+check('picking a day closes the calendar', panelTree.every((node) => node.props['data-wst-surface'] !== 'date'))
+const pickedLabel = textOf([panelTree.find((node) => node.type === 'button' && node.props['aria-label'] === '截止日期')]).trim()
+const [pickedYear, pickedMonth, pickedDate] = pickedDay.split('-').map(Number)
+check('the chip shows the picked day', pickedLabel.includes(`${String(pickedYear)}年${String(pickedMonth)}月${String(pickedDate)}日`), `${pickedDay} -> ${pickedLabel}`)
+check('the selection is marked inside the calendar', (() => {
+  panelTree.find((node) => node.type === 'button' && node.props['aria-label'] === '截止日期').props.onClick()
+  const tree = renderPanel()
+  const chosen = tree.find((node) => node.props['data-day'] === pickedDay)
+  return chosen !== undefined && chosen.props['aria-pressed'] === true && String(chosen.props.className).includes('wst-cal-on')
+})())
+panelTree = renderPanel()
 
 const detailToggle = panelTree.find((node) => node.type === 'button' && node.props.title === '备注与子任务')
 detailToggle.props.onClick()
@@ -467,7 +532,7 @@ const savedBody = saveCall ? JSON.parse(saveCall.init.body) : null
 check('save carries the version token', savedBody !== null && savedBody.version === 'v1', JSON.stringify(savedBody && savedBody.version))
 check('save declares whether the panel believes the file exists', savedBody !== null && savedBody.exists === true, JSON.stringify(savedBody && savedBody.exists))
 check('save carries the reordered list', savedBody !== null && JSON.stringify(savedBody.todos.map((todo) => todo.title)) === JSON.stringify(['已完成项', '写插件', '新条目']), JSON.stringify(savedBody && savedBody.todos.map((todo) => todo.title)))
-check('save keeps the status, priority and due date the menus set', savedBody !== null && savedBody.todos[1].status === 'doing' && savedBody.todos[1].priority === 'high' && savedBody.todos[1].due === '2030-05-06', JSON.stringify(savedBody && savedBody.todos[1]))
+check('save keeps the status, priority and due date the menus set', savedBody !== null && savedBody.todos[1].status === 'doing' && savedBody.todos[1].priority === 'high' && savedBody.todos[1].due === pickedDay, JSON.stringify(savedBody && savedBody.todos[1]))
 check('save keeps the edited notes', savedBody !== null && savedBody.todos[1].notes === '新的备注', JSON.stringify(savedBody && savedBody.todos[1].notes))
 check('an ordinary edit is not sent with keepalive', saveCall !== undefined && saveCall.init.keepalive === undefined)
 
