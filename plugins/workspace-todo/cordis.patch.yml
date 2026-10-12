@@ -1,0 +1,9 @@
+# workspace-todo bundle layer: inserts this plugin's loader row.
+#
+# Install (either way), from a checkout of this repository:
+#   - plugin manager, applies to a live profile:  plugin_manager install_bundle <path-to-this-directory>
+#   - official assembly, takes effect after restart:  dsh plugin --profile <profile> add <path-to-this-directory>
+- insert:
+    - id: workspace-todo
+      name: '@dsh-external/workspace-todo'
+      config: {}

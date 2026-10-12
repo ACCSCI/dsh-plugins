@@ -1,0 +1,10 @@
+# Dependencies, if a plugin ever grows one
+node_modules/
+
+# Plugin data a plugin may write next to a checkout
+.dsh/
+
+# Logs and OS clutter
+*.log
+.DS_Store
+Thumbs.db

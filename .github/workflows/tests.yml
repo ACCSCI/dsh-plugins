@@ -1,0 +1,24 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  offline-suites:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # Every suite is a dependency-free Node script, so there is nothing to install.
+      - name: workspace-todo host routes
+        run: node plugins/workspace-todo/test/host-routes.mjs
+      - name: workspace-todo client smoke
+        run: node plugins/workspace-todo/test/client-smoke.mjs
