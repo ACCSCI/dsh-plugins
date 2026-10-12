@@ -859,6 +859,8 @@ window.__ModuleLoader__.load({
 				align: "start",
 				dense: true,
 				selection: "fill",
+				// The panel clips its own overflow, so the list must escape to the frame layer.
+				portal: true,
 				onClose: () => setMenu("status", false),
 				items: STATUSES.map((entry) => ({
 					id: entry.id,
@@ -888,6 +890,7 @@ window.__ModuleLoader__.load({
 				align: "start",
 				dense: true,
 				selection: "fill",
+				portal: true,
 				onClose: () => setMenu("priority", false),
 				items: [
 					{ id: "", label: "无优先级", icon: null },
@@ -1027,6 +1030,12 @@ window.__ModuleLoader__.load({
 					const target = event.target;
 					if (panelRef.current !== null && target instanceof Node && panelRef.current.contains(target)) return;
 					if (target instanceof Element && target.closest("[data-wst-trigger]") !== null) return;
+					/*
+					 * A row menu renders through the frame layer, so its rows live
+					 * outside this panel: without this guard, picking an option would
+					 * close the panel it belongs to.
+					 */
+					if (target instanceof Element && target.closest('[role="menu"]') !== null) return;
 					closePanel();
 				};
 				const onKeyDown = (event) => {

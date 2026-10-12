@@ -121,6 +121,26 @@ function define(name, value) {
   Object.defineProperty(globalThis, name, { value, configurable: true, writable: true })
 }
 
+/** Enough of the DOM node types for the panel's outside-click guards. */
+class FakeNode {}
+class FakeElement extends FakeNode {
+  constructor(selector) {
+    super()
+    this.selector = selector
+  }
+
+  closest(selector) {
+    return selector === this.selector ? this : null
+  }
+
+  contains() {
+    return false
+  }
+}
+
+define('Node', FakeNode)
+define('Element', FakeElement)
+
 define('window', windowStub)
 define('document', documentStub)
 define('navigator', { clipboard: clipboardStub })
@@ -173,7 +193,7 @@ function buildUi(suffix, options = {}) {
      */
     stub.Menu = (props) => react.createElement(
       'div',
-      { 'data-menu-state': props.open === true ? 'open' : 'closed' },
+      { 'data-menu-state': props.open === true ? 'open' : 'closed', 'data-menu-portal': props.portal === true ? 'true' : 'false' },
       props.anchor,
       props.open === true
         ? react.createElement(
@@ -386,6 +406,7 @@ menuTrigger(panelTree, '状态').props.onClick()
 panelTree = renderPanel()
 const openStatusMenu = panelTree.find((node) => node.props['data-menu-state'] === 'open')
 check('the status trigger opens the app menu', openStatusMenu !== undefined)
+check('the menu escapes the panel so it cannot be clipped', openStatusMenu !== undefined && openStatusMenu.props['data-menu-portal'] === 'true', openStatusMenu ? String(openStatusMenu.props['data-menu-portal']) : 'no menu')
 const statusItems = panelTree.filter((node) => typeof node.props['data-menu-item'] === 'string').map((node) => node.props['data-menu-item'])
 check('the menu offers all five statuses', statusItems.length === 5 && statusItems.includes('blocked'), JSON.stringify(statusItems))
 check('each status option carries its own icon', panelTree.filter((node) => typeof node.props['data-menu-item'] === 'string').every((node) => Array.isArray(node.props.children) && node.props.children[0] !== null))
@@ -536,6 +557,20 @@ await sleep(450)
 const backupNotice = textOf(renderPanel())
 check('a save the host backed up reports the kept copy', backupNotice.includes('todos.json.bak'), backupNotice.slice(0, 90))
 saveExtra = null
+
+/* ------------------------------------------------------------------ */
+/* 4b. outside clicks: a portaled menu is not "outside"                */
+/* ------------------------------------------------------------------ */
+
+const outsideClick = documentStub.listeners.get('mousedown')
+check('the panel installed its outside-click guard', typeof outsideClick === 'function')
+outsideClick({ target: new FakeElement('[role="menu"]') })
+check('clicking inside a portaled menu leaves the panel open', findByClass(renderPanel(), 'wst-panel') !== undefined)
+outsideClick({ target: new FakeElement('[data-wst-trigger]') })
+check('clicking the header button is left to the button itself', findByClass(renderPanel(), 'wst-panel') !== undefined)
+outsideClick({ target: new FakeElement('div') })
+await sleep(220)
+check('a genuine outside click still closes the panel', renderPanel().length === 0, 'still open')
 
 /* ------------------------------------------------------------------ */
 /* 5. other shell builds: legacy icon names, and no Menu primitive     */
