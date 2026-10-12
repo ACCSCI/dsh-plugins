@@ -18,10 +18,49 @@ window.__ModuleLoader__.load({
 		const react = require("react");
 		/**
 		 * The shell's own UI kit, seeded in the platform module table: the same
-		 * menu, buttons, and icon set the shipped plugins render with, so the panel
-		 * matches the app instead of imitating it.
+		 * menu and icon set the shipped plugins render with, so the panel matches
+		 * the app instead of imitating it.
 		 */
 		const ui = require("@deepseek-ai/dsh-client-ui-primitives");
+
+		/**
+		 * Icons are resolved by BASE name, never by an exact export name. Shipped
+		 * builds disagree on the suffix — one shell exports `IconPlusOutline16`,
+		 * another `IconPlusOutlineRegular` / `IconPlusOutlineMedium` — and an
+		 * `undefined` element type is a hard crash (React error #130) that takes the
+		 * whole panel down. A name that matches nothing renders nothing instead.
+		 */
+		const ICON_SUFFIXES = [
+			"OutlineRegular", "OutlineMedium", "Outline16", "Outline14", "Outline12", "Outline8",
+			"Regular", "Medium", "Fill16", "Fill14", "Regular16", "Medium16",
+		];
+		const iconCache = new Map();
+
+		function iconType(base) {
+			if (iconCache.has(base)) return iconCache.get(base);
+			let found = null;
+			for (const suffix of ICON_SUFFIXES) {
+				const candidate = ui["Icon" + base + suffix];
+				if (typeof candidate === "function") {
+					found = candidate;
+					break;
+				}
+			}
+			iconCache.set(base, found);
+			return found;
+		}
+
+		function iconOf(base, props) {
+			const Icon = iconType(base);
+			return Icon === null ? null : react.createElement(Icon, props);
+		}
+
+		/** Kit icons color themselves from `currentColor`, so a per-state color needs a wrapper. */
+		function tintedIcon(base, colorToken, size) {
+			const glyph = iconOf(base, { size });
+			if (glyph === null) return null;
+			return react.createElement("span", { className: "wst-glyph", style: { color: "var(" + colorToken + ")" } }, glyph);
+		}
 
 		const API_BASE = "/workspace-todo/api";
 		const HEADER_SLOT = "conversation.session.header.utilities";
@@ -33,11 +72,11 @@ window.__ModuleLoader__.load({
 
 		/** Status order is the user's: 待办, 进行中, 已完成, 阻塞, 等待. */
 		const STATUSES = [
-			{ id: "todo", label: "待办", Icon: ui.IconQueueOutline14, color: "--dsw-alias-label-secondary" },
-			{ id: "doing", label: "进行中", Icon: ui.IconLoadingOutline16, color: "--dsw-alias-brand-primary", spin: true },
-			{ id: "done", label: "已完成", Icon: ui.IconCheckOutline16, color: "--dsw-alias-state-success-primary" },
-			{ id: "blocked", label: "阻塞", Icon: ui.IconWarningOutline16, color: "--dsw-alias-state-error-primary" },
-			{ id: "waiting", label: "等待", Icon: ui.IconClockOutline16, color: "--dsw-alias-state-warn-primary" },
+			{ id: "todo", label: "待办", glyph: "Queue", color: "--dsw-alias-label-secondary" },
+			{ id: "doing", label: "进行中", glyph: "Loading", color: "--dsw-alias-brand-primary", spin: true },
+			{ id: "done", label: "已完成", glyph: "Check", color: "--dsw-alias-state-success-primary" },
+			{ id: "blocked", label: "阻塞", glyph: "Warning", color: "--dsw-alias-state-error-primary" },
+			{ id: "waiting", label: "等待", glyph: "Clock", color: "--dsw-alias-state-warn-primary" },
 		];
 		const PRIORITIES = [
 			{ id: "high", label: "高", color: "--dsw-alias-state-error-primary" },
@@ -59,13 +98,12 @@ window.__ModuleLoader__.load({
 		/** One entry of the app's own status icon set, colored and (for 进行中) spinning. */
 		function StatusIcon(props) {
 			const status = statusOf(props.status);
-			const Icon = status.Icon;
-			if (typeof Icon !== "function") return null;
-			return react.createElement(Icon, {
+			const glyph = iconOf(status.glyph, {
 				size: props.size || 13,
 				className: status.spin === true && props.animate !== false ? "wst-spin" : undefined,
-				style: { color: "var(" + status.color + ")" },
 			});
+			if (glyph === null) return null;
+			return react.createElement("span", { className: "wst-glyph", style: { color: "var(" + status.color + ")" } }, glyph);
 		}
 
 		/**
@@ -149,6 +187,11 @@ window.__ModuleLoader__.load({
 .wst-toast{display:inline-flex;align-items:center;gap:4px;color:var(--dsw-alias-state-success-primary,#3fb950);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;animation:wst-fade .18s ease}
 .wst-empty{display:flex;flex-direction:column;align-items:center;gap:7px;padding:26px 14px;color:var(--dsw-alias-label-secondary,#888);font-size:12px;text-align:center}
 .wst-empty svg{opacity:.5}
+.wst-glyph{display:inline-flex;align-items:center;flex:none}
+.wst-menu-root{display:inline-flex;position:relative}
+.wst-menu{position:absolute;z-index:2;top:calc(100% + 4px);left:0;min-width:132px;padding:4px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22));border-radius:10px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));box-shadow:0 16px 40px -12px rgba(0,0,0,.35);animation:wst-in .14s cubic-bezier(.2,.8,.2,1)}
+.wst-menu-item{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border:0;border-radius:7px;background:transparent;color:inherit;font-family:inherit;font-size:12px;text-align:left;cursor:pointer;transition:background .12s ease}
+.wst-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))}
 
 .wst-spin{animation:wst-spin 1.05s linear infinite}
 @keyframes wst-in{from{opacity:0;transform:translateY(-4px) scale(.985)}to{opacity:1;transform:none}}
@@ -619,9 +662,7 @@ window.__ModuleLoader__.load({
 
 		/** The app's own checklist glyph for the header button and the panel title. */
 		function ChecklistIcon(props) {
-			const Icon = ui.IconChecklistOutline14;
-			if (typeof Icon !== "function") return null;
-			return react.createElement(Icon, { size: props && props.size ? props.size : 14 });
+			return iconOf("Checklist", { size: props && props.size ? props.size : 14 });
 		}
 
 		/** Six-dot drag handle, the grip every list UI of this shape uses. */
@@ -631,6 +672,35 @@ window.__ModuleLoader__.load({
 				"svg",
 				{ width: 16, height: 16, viewBox: "0 0 16 16", fill: "currentColor", "aria-hidden": "true", focusable: "false" },
 				dots.map(([cx, cy]) => react.createElement("circle", { key: String(cx) + "-" + String(cy), cx, cy, r: 1.15 })),
+			);
+		}
+
+		/**
+		 * The anchored dropdown. The kit's `Menu` is used whenever it exists; a build
+		 * that renames or drops it falls back to an inline list rather than a panel
+		 * that cannot render at all.
+		 */
+		function MenuSurface(props) {
+			if (typeof ui.Menu === "function") return react.createElement(ui.Menu, props);
+			return react.createElement(
+				"span",
+				{ className: "wst-menu-root" },
+				props.anchor,
+				props.open === true
+					? react.createElement(
+						"div",
+						{ className: "wst-menu", role: "menu" },
+						(props.items || []).map((item) => react.createElement(
+							"button",
+							{
+								key: item.id, type: "button", role: "menuitem", className: "wst-menu-item",
+								onClick: () => props.onSelect(item.id),
+							},
+							item.icon === undefined ? null : item.icon,
+							react.createElement("span", null, item.label),
+						)),
+					)
+					: null,
 			);
 		}
 
@@ -784,7 +854,7 @@ window.__ModuleLoader__.load({
 			);
 
 			/** One status/priority pill that opens the app's own menu. */
-			const statusControl = react.createElement(ui.Menu, {
+			const statusControl = react.createElement(MenuSurface, {
 				open: menuOpen("status"),
 				align: "start",
 				dense: true,
@@ -793,9 +863,7 @@ window.__ModuleLoader__.load({
 				items: STATUSES.map((entry) => ({
 					id: entry.id,
 					label: entry.label,
-					icon: typeof entry.Icon === "function"
-						? react.createElement(entry.Icon, { size: 14, style: { color: "var(" + entry.color + ")" } })
-						: null,
+					icon: tintedIcon(entry.glyph, entry.color, 14),
 				})),
 				selectedId: todo.status,
 				onSelect: (id) => {
@@ -811,11 +879,11 @@ window.__ModuleLoader__.load({
 					},
 					react.createElement(StatusIcon, { status: todo.status, size: 13 }),
 					react.createElement("span", null, status.label),
-					react.createElement(ui.IconChevronDownOutline14, { size: 10 }),
+					iconOf("ChevronDown", { size: 10 }),
 				),
 			});
 
-			const priorityControl = react.createElement(ui.Menu, {
+			const priorityControl = react.createElement(MenuSurface, {
 				open: menuOpen("priority"),
 				align: "start",
 				dense: true,
@@ -850,7 +918,7 @@ window.__ModuleLoader__.load({
 			const whenControl = react.createElement(
 				"label",
 				{ className: "wst-date" + (overdue ? " wst-overdue" : ""), title: overdue ? "已逾期" : "截止日期" },
-				react.createElement(ui.IconAlarmClockOutline16, { size: 12 }),
+				iconOf("AlarmClock", { size: 12 }),
 				react.createElement("input", {
 					type: "date", value: todo.due ? todo.due : "", "aria-label": "截止日期",
 					onChange: (event) => patchTodo(todo.id, { due: event.target.value === "" ? null : event.target.value }),
@@ -869,7 +937,7 @@ window.__ModuleLoader__.load({
 						type: "button", className: "wst-mini", title: "备注与子任务", "aria-expanded": props.expanded ? "true" : "false",
 						onClick: props.onToggleDetail,
 					},
-					react.createElement(ui.IconListPenOutline16, { size: 12 }),
+					iconOf("ListPen", { size: 12 }),
 					react.createElement("span", null, noteCount > 0 ? "备注 " + String(noteCount) : "备注"),
 				),
 				react.createElement(
@@ -878,7 +946,7 @@ window.__ModuleLoader__.load({
 						type: "button", className: "wst-mini wst-del", title: "删除这条待办", "aria-label": "删除",
 						onClick: () => removeTodo(todo.id),
 					},
-					react.createElement(ui.IconTrashOutline16, { size: 12 }),
+					iconOf("Trash", { size: 12 }),
 				),
 			);
 
@@ -1047,10 +1115,10 @@ window.__ModuleLoader__.load({
 				react.createElement("button", {
 					type: "button", className: "wst-icon-btn", title: "从磁盘重新载入", "aria-label": "从磁盘重新载入",
 					onClick: () => void loadFor(snapshot.sessionId, snapshot.dir),
-				}, react.createElement(ui.IconRefreshOutline16, { size: 13 })),
+				}, iconOf("Refresh", { size: 13 })),
 				react.createElement("button", {
 					type: "button", className: "wst-icon-btn", title: "关闭", "aria-label": "关闭", onClick: closePanel,
-				}, react.createElement(ui.IconCloseOutline16, { size: 13 })),
+				}, iconOf("Close", { size: 13 })),
 			);
 
 			const addRow = react.createElement(
@@ -1068,7 +1136,7 @@ window.__ModuleLoader__.load({
 				react.createElement(
 					"button",
 					{ type: "button", className: "wst-add-btn", disabled: draft.trim() === "", onClick: commitDraft },
-					react.createElement(ui.IconPlusOutline16, { size: 13 }),
+					iconOf("Plus", { size: 13 }),
 					react.createElement("span", null, "添加"),
 				),
 			);

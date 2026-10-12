@@ -145,45 +145,55 @@ define('fetch', async (url, init) => {
 /* the shell's UI kit, stubbed                                        */
 /* ------------------------------------------------------------------ */
 
-const ICON_NAMES = [
-  'IconChecklistOutline14', 'IconQueueOutline14', 'IconLoadingOutline16', 'IconCheckOutline16',
-  'IconWarningOutline16', 'IconClockOutline16', 'IconChevronDownOutline14', 'IconAlarmClockOutline16',
-  'IconListPenOutline16', 'IconTrashOutline16', 'IconRefreshOutline16', 'IconCloseOutline16',
-  'IconPlusOutline16',
+/** The icon bases the plugin asks for, decoupled from any one export name. */
+const ICON_BASES = [
+  'Checklist', 'Queue', 'Loading', 'Check', 'Warning', 'Clock', 'ChevronDown',
+  'AlarmClock', 'ListPen', 'Trash', 'Refresh', 'Close', 'Plus',
 ]
 
-const uiStub = {}
-for (const name of ICON_NAMES) {
-  uiStub[name] = (props) => react.createElement('svg', {
-    'data-icon': name,
-    className: props ? props.className : undefined,
-    style: props ? props.style : undefined,
-    width: props ? props.size : undefined,
-    height: props ? props.size : undefined,
-  })
+/** Shipped shells disagree on the suffix: the desktop build uses these two. */
+const APP_SUFFIX = 'OutlineRegular'
+const LEGACY_SUFFIX = 'Outline16'
+
+function buildUi(suffix, options = {}) {
+  const stub = {}
+  for (const base of ICON_BASES) {
+    const name = 'Icon' + base + suffix
+    stub[name] = (props) => react.createElement('svg', {
+      'data-icon': name,
+      className: props ? props.className : undefined,
+      width: props ? props.size : undefined,
+      height: props ? props.size : undefined,
+    })
+  }
+  if (options.withMenu !== false) {
+    /**
+     * Mirrors the contract the shipped plugins use: `anchor` plus `items`,
+     * `selectedId`, `open`, `onClose`, and `onSelect`, each item's `icon` rendered as given.
+     */
+    stub.Menu = (props) => react.createElement(
+      'div',
+      { 'data-menu-state': props.open === true ? 'open' : 'closed' },
+      props.anchor,
+      props.open === true
+        ? react.createElement(
+          'div',
+          { className: 'stub-menu' },
+          (props.items ?? []).map((item) => react.createElement(
+            'button',
+            { key: item.id, type: 'button', 'data-menu-item': item.id, onClick: () => props.onSelect(item.id) },
+            item.icon,
+            item.label,
+          )),
+        )
+        : null,
+    )
+  }
+  return stub
 }
 
-/**
- * Mirrors the contract the shipped plugins use: `anchor` plus `items`, `selectedId`,
- * `open`, `onClose`, and `onSelect`, with each item's `icon` rendered as given.
- */
-uiStub.Menu = (props) => react.createElement(
-  'div',
-  { 'data-menu-state': props.open === true ? 'open' : 'closed' },
-  props.anchor,
-  props.open === true
-    ? react.createElement(
-      'div',
-      { className: 'stub-menu' },
-      (props.items ?? []).map((item) => react.createElement(
-        'button',
-        { key: item.id, type: 'button', 'data-menu-item': item.id, onClick: () => props.onSelect(item.id) },
-        item.icon,
-        item.label,
-      )),
-    )
-    : null,
-)
+/** Swapped between phases so one harness can exercise several shell builds. */
+let activeUi = buildUi(APP_SUFFIX)
 
 /* ------------------------------------------------------------------ */
 /* load the bundle                                                    */
@@ -200,25 +210,29 @@ function check(name, ok, detail) {
 
 const bundle = captured.factory((specifier) => {
   if (specifier === 'react') return react
-  if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return uiStub
+  if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return activeUi
   throw new Error(`harness: unexpected require(${specifier})`)
 })
 check('bundle registers the package id', captured.id === '@dsh-external/workspace-todo', captured.id)
 
-const registrations = []
-const ctx = {
-  slots: {
-    inject(key, callback) {
-      callback()
-      return () => {}
+function collectContributions(instance) {
+  const collected = []
+  instance.apply({
+    slots: {
+      inject(key, callback) {
+        callback()
+        return () => {}
+      },
+      register(options, component) {
+        collected.push({ options, component })
+        return () => {}
+      },
     },
-    register(options, component) {
-      registrations.push({ options, component })
-      return () => {}
-    },
-  },
+  })
+  return collected
 }
-bundle.apply(ctx)
+
+const registrations = collectContributions(bundle)
 check('apply registers two contributions', registrations.length === 2, String(registrations.length))
 check('header button targets the session header utilities', registrations[0].options.name === 'conversation.session.header.utilities' && registrations[0].options.id === 'workspace-todo', JSON.stringify(registrations[0].options))
 check('panel targets the frame overlay layer', registrations[1].options.name === 'shell.overlay' && registrations[1].options.id === 'workspace-todo-panel', JSON.stringify(registrations[1].options))
@@ -365,7 +379,7 @@ const pickMenuItem = (tree, id) => {
 
 const statusPill = panelTree.find((node) => typeof node.props.className === 'string' && node.props.className.split(' ').includes('wst-status'))
 check('the row status is a themed pill, not a native select', statusPill !== undefined && panelTree.every((node) => node.type !== 'select'))
-check('the status pill carries the app status icon', panelTree.some((node) => node.props['data-icon'] === 'IconLoadingOutline16') && panelTree.some((node) => node.props['data-icon'] === 'IconCheckOutline16'))
+check('the status pill carries the app status icon', panelTree.some((node) => node.props['data-icon'] === 'IconLoadingOutlineRegular') && panelTree.some((node) => node.props['data-icon'] === 'IconCheckOutlineRegular'))
 check('the status pill is colored from the token palette', statusPill !== undefined && typeof statusPill.props.style.color === 'string' && statusPill.props.style.color.startsWith('var(--dsw-alias-'))
 
 menuTrigger(panelTree, '状态').props.onClick()
@@ -385,7 +399,7 @@ pickMenuItem(renderPanel(), 'doing')
 panelTree = renderPanel()
 const spinning = panelTree.filter((node) => node.props.className === 'wst-spin')
 check('进行中 renders a spinning icon', spinning.length === 1, `${String(doingIconBefore)} -> ${String(spinning.length)}`)
-check('the doing icon is the app loading glyph', spinning[0] !== undefined && spinning[0].props['data-icon'] === 'IconLoadingOutline16', spinning[0] ? String(spinning[0].props['data-icon']) : 'none')
+check('the doing icon is the app loading glyph', spinning[0] !== undefined && spinning[0].props['data-icon'] === 'IconLoadingOutlineRegular', spinning[0] ? String(spinning[0].props['data-icon']) : 'none')
 
 menuTrigger(panelTree, '优先级').props.onClick()
 panelTree = renderPanel()
@@ -522,6 +536,45 @@ await sleep(450)
 const backupNotice = textOf(renderPanel())
 check('a save the host backed up reports the kept copy', backupNotice.includes('todos.json.bak'), backupNotice.slice(0, 90))
 saveExtra = null
+
+/* ------------------------------------------------------------------ */
+/* 5. other shell builds: legacy icon names, and no Menu primitive     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A shipped shell can name its glyphs differently or drop the Menu export
+ * entirely. Either difference once took the whole panel down with an invalid
+ * element type, so both are exercised here with a second module instance.
+ */
+delete globalThis.__dshWorkspaceTodoShared__
+activeUi = buildUi(LEGACY_SUFFIX, { withMenu: false })
+vm.runInThisContext(source, { filename: 'lib/client.js' })
+const legacy = collectContributions(captured.factory((specifier) => {
+  if (specifier === 'react') return react
+  if (specifier === '@deepseek-ai/dsh-client-ui-primitives') return activeUi
+  throw new Error(`harness: unexpected require(${specifier})`)
+}))
+check('a build without Menu still registers both contributions', legacy.length === 2, String(legacy.length))
+
+const legacyButton = expand(react.createElement(legacy[0].component, { sessionId: 'S1', useSessions }))
+const legacyTrigger = findByClass(legacyButton, 'wst-btn')
+check('legacy icon names still resolve on the header button', legacyButton.some((node) => node.props['data-icon'] === 'IconChecklistOutline16'), 'no legacy checklist glyph')
+legacyTrigger.props.onClick({ currentTarget: { getBoundingClientRect: () => ({ bottom: 40, right: 1400 }) } })
+await tick()
+let legacyTree = expand(react.createElement(legacy[1].component, {}))
+check('the panel renders on a build without the Menu primitive', findByClass(legacyTree, 'wst-panel') !== undefined)
+check('legacy-suffixed status icons resolve', legacyTree.some((node) => node.props['data-icon'] === 'IconLoadingOutline16'))
+
+const legacyStatusTrigger = legacyTree.find((node) => node.type === 'button' && node.props['aria-label'] === '状态')
+legacyStatusTrigger.props.onClick()
+legacyTree = expand(react.createElement(legacy[1].component, {}))
+const fallback = findByClass(legacyTree, 'wst-menu')
+check('the built-in fallback list stands in for the kit menu', fallback !== undefined)
+const fallbackItems = legacyTree.filter((node) => node.props['data-menu-item'] === undefined && node.type === 'button' && node.props.role === 'menuitem')
+check('the fallback lists all five statuses', fallbackItems.length === 5, String(fallbackItems.length))
+fallbackItems[3].props.onClick()
+legacyTree = expand(react.createElement(legacy[1].component, {}))
+check('choosing from the fallback list still updates the row', textOf(legacyTree).includes('阻塞'))
 
 for (const cleanup of cleanups) cleanup()
 
