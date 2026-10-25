@@ -1,5 +1,5 @@
 /**
- * @dsh-external/workspace-todo — host half.
+ * @accsci/dsh-workspace-todo — host half.
  *
  * Owns one plain JSON file per working directory and exposes it to this
  * package's client half over two JSON routes:

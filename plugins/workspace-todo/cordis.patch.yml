@@ -5,5 +5,5 @@
 #   - official assembly, takes effect after restart:  dsh plugin --profile <profile> add <path-to-this-directory>
 - insert:
     - id: workspace-todo
-      name: '@dsh-external/workspace-todo'
+      name: '@accsci/dsh-workspace-todo'
       config: {}

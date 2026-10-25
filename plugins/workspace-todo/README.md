@@ -1,6 +1,6 @@
 # workspace-todo
 
-按工作目录维护的个人待办清单（DSH 插件包，`@dsh-external/workspace-todo`）。
+按工作目录维护的个人待办清单（DSH 插件包，`@accsci/dsh-workspace-todo`）。
 
 ## 是什么
 
@@ -143,7 +143,7 @@ dsh plugin --profile <profile> add <本目录的绝对路径>
 ## 卸载
 
 ```powershell
-plugin_manager remove_bundle @dsh-external/workspace-todo
+plugin_manager remove_bundle @accsci/dsh-workspace-todo
 ```
 
 卸载只影响插件本身，`<项目>/.dsh/todos.json` 保留。
@@ -164,7 +164,7 @@ plugin_manager remove_bundle @dsh-external/workspace-todo
 | Host 半（离线） | `test/host-routes.mjs` **35/35**：路径与输入校验、错误码映射、跨站栅栏、版本冲突、受保护创建、清空备份、沙箱写入边界 |
 | 客户端半（离线） | `test/client-smoke.mjs` **66/66**：渲染、应用 UI 套件的状态/优先级菜单与图标、日期/备注/子任务、拖拽重排、复制、筛选、保存队列与并发编辑、工作区切换、备份提示、面板进出场状态 |
 | 活体路由 | `test/live-check.mjs` **9/9**（GUI 运行于 `http://127.0.0.1:19387`）：跨站/外来 Origin 403、非法 JSON 400、项目路径映射、真实写入往返、`.dsh` 目录自动创建、过期版本 409 |
-| 客户端入场 | 启动图含 `@dsh-external/workspace-todo`，服务器返回的 combo bundle 即最新客户端半 |
+| 客户端入场 | 启动图含 `@accsci/dsh-workspace-todo`，服务器返回的 combo bundle 即最新客户端半 |
 | 端到端 | GUI 中一次真实新增后，`<项目目录>/.dsh/todos.json` 出现在项目目录（该路径只可能由面板经这两条路由创建） |
 | **未验证** | 真实浏览器里的渲染观感与拖拽/复制手感；跨窗口并发写的实测 |
 

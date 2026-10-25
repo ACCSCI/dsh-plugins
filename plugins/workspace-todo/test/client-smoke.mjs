@@ -273,7 +273,7 @@ const bundle = captured.factory((specifier) => {
   if (specifier === 'react-dom') return { createPortal: (element) => element }
   throw new Error(`harness: unexpected require(${specifier})`)
 })
-check('bundle registers the package id', captured.id === '@dsh-external/workspace-todo', captured.id)
+check('bundle registers the package id', captured.id === '@accsci/dsh-workspace-todo', captured.id)
 
 function collectContributions(instance) {
   const collected = []

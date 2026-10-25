@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      # One entry point: the toolbox discovers every plugin, checks manifests,
-      # README and CI wiring, then runs every dependency-free suite it finds.
+      # One entry point: discover every plugin, check its manifest, README row and
+      # CI hook, then run every dependency-free suite.
       - name: repository check
-        run: node tools/dsh-plugins.mjs check
+        run: node tools/check.mjs

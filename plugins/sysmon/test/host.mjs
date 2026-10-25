@@ -1,5 +1,5 @@
 /**
- * @dsh-external/dsh-sysmon — host half tests.
+ * @accsci/dsh-sysmon — host half tests.
  *
  * Dependency-free: no DSH install, no network, no Powershell. The route handler
  * is driven over a shimmed `ctx` so the assertions cover the contract the Client

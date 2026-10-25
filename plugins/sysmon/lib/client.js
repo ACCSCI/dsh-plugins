@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@dsh-external/dsh-sysmon',
+  id: '@accsci/dsh-sysmon',
   factory(require) {
     const React = require('react');
     const h = React.createElement;

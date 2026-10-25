@@ -1,9 +1,21 @@
 {
-  "name": "@dsh-external/dsh-sysmon",
+  "name": "@accsci/dsh-sysmon",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
   "description": "Live CPU, memory and GPU readout under the DSH composer.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "system-monitor",
+    "cpu",
+    "gpu"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ACCSCI/dsh-plugins.git",
+    "directory": "plugins/sysmon"
+  },
+  "type": "module",
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
@@ -19,6 +31,9 @@
     "README.md"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

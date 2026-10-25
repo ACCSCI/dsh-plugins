@@ -1,5 +1,5 @@
 /**
- * @dsh-external/workspace-todo — client half.
+ * @accsci/dsh-workspace-todo — client half.
  *
  * A hand-maintained todo list bound to the Session's working directory: a
  * compact button in the Session header's right-aligned utilities plus the
@@ -10,7 +10,7 @@
  */
 
 window.__ModuleLoader__.load({
-	id: "@dsh-external/workspace-todo",
+	id: "@accsci/dsh-workspace-todo",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;
@@ -232,7 +232,7 @@ window.__ModuleLoader__.load({
 			for (let index = 0; index < css.length; index += 1) {
 				hash = ((hash * 33) ^ css.charCodeAt(index)) >>> 0;
 			}
-			return "@dsh-external/workspace-todo/panel." + hash.toString(36) + ".css";
+			return "@accsci/dsh-workspace-todo/panel." + hash.toString(36) + ".css";
 		}
 
 		(function installStyles() {
@@ -240,11 +240,11 @@ window.__ModuleLoader__.load({
 			if (typeof document === "undefined") return;
 			if (document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") !== null) return;
 			// Drop this plugin's earlier stylesheets so an updated panel never inherits stale rules.
-			for (const stale of Array.from(document.querySelectorAll('style[data-plugin="@dsh-external/workspace-todo"]'))) {
+			for (const stale of Array.from(document.querySelectorAll('style[data-plugin="@accsci/dsh-workspace-todo"]'))) {
 				stale.remove();
 			}
 			const tag = document.createElement("style");
-			tag.dataset.plugin = "@dsh-external/workspace-todo";
+			tag.dataset.plugin = "@accsci/dsh-workspace-todo";
 			tag.dataset.pluginCss = tagId;
 			tag.textContent = CSS;
 			document.head.appendChild(tag);

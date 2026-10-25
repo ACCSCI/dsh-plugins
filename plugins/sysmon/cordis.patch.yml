@@ -5,7 +5,7 @@
 #   - official assembly, takes effect after restart:  dsh plugin --profile <profile> add <path-to-this-directory>
 - insert:
     - id: sysmon
-      name: '@dsh-external/dsh-sysmon'
+      name: '@accsci/dsh-sysmon'
       config:
         intervalMs: 2000
         gpu: true

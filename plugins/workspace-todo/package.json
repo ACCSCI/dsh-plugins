@@ -1,8 +1,19 @@
 {
-  "name": "@dsh-external/workspace-todo",
+  "name": "@accsci/dsh-workspace-todo",
   "version": "0.1.0",
-  "description": "工作区待办清单：会话顶栏按钮 + 浮层面板，按工作目录把清单存在 <项目>/.dsh/todos.json",
-  "private": true,
+  "description": "A todo list bound to the Session's working directory, opened from the Session header.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "todo",
+    "workspace"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ACCSCI/dsh-plugins.git",
+    "directory": "plugins/workspace-todo"
+  },
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -20,6 +31,9 @@
     "README.md"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

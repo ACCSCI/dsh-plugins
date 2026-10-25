@@ -38,7 +38,7 @@ activation may carry `null` — the widget shows a dash, not a zero.
 ```yaml
 - insert:
     - id: sysmon
-      name: '@dsh-external/dsh-sysmon'
+      name: '@accsci/dsh-sysmon'
       config:
         intervalMs: 2000   # clamped to 500..60000
         gpu: true          # false = never spawn the sampler
