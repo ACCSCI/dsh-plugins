@@ -1,0 +1,11 @@
+# sysmon bundle layer: inserts this plugin's loader row.
+#
+# Install (either way), from a checkout of this repository:
+#   - plugin manager, applies to a live profile:  install_bundle <path-to-this-directory>
+#   - official assembly, takes effect after restart:  dsh plugin --profile <profile> add <path-to-this-directory>
+- insert:
+    - id: sysmon
+      name: '@dsh-external/dsh-sysmon'
+      config:
+        intervalMs: 2000
+        gpu: true

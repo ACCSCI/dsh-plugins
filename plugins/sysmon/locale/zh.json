@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "系统监视器",
+    "description": "在输入框下方实时显示 CPU、内存与 GPU 占用率。"
+  }
+}

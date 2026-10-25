@@ -17,8 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      # Every suite is a dependency-free Node script, so there is nothing to install.
-      - name: workspace-todo host routes
-        run: node plugins/workspace-todo/test/host-routes.mjs
-      - name: workspace-todo client smoke
-        run: node plugins/workspace-todo/test/client-smoke.mjs
+      # One entry point: the toolbox discovers every plugin, checks manifests,
+      # README and CI wiring, then runs every dependency-free suite it finds.
+      - name: repository check
+        run: node tools/dsh-plugins.mjs check

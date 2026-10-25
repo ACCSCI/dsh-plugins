@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "System Monitor",
+    "description": "Shows live CPU, memory and GPU usage under the composer."
+  }
+}
