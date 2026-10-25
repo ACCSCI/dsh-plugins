@@ -9,7 +9,8 @@
  * a laptop; the point is to catch the drift that used to happen silently —
  * a package name that no longer matches the row its cordis.patch.yml inserts,
  * a files[] entry that stopped existing, a plugin missing from the README table
- * or from the CI job.
+ * or from the CI job. It says nothing about publishing: these packages are
+ * installed by path, so a registry is optional.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -53,7 +54,6 @@ for (const dir of plugins) {
 
   if (!pkg.name.startsWith(SCOPE)) fail('package name must be scoped ' + SCOPE + ', got ' + pkg.name)
   if (!pkg.version) fail('missing version')
-  if (pkg.private === true) fail('"private": true blocks the npm release this repository exists to publish')
   if (!pkg.license) fail('missing license')
 
   const patchRel = pkg.dsh?.bundle?.patch

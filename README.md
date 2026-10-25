@@ -9,7 +9,7 @@ tools. Every plugin ships with dependency-free tests that run on plain Node.
 
 ## Plugins
 
-| Plugin | Install | What it does | Halves |
+| Plugin | Package | What it does | Halves |
 | --- | --- | --- | --- |
 | [`workspace-todo`](plugins/workspace-todo) | `@accsci/dsh-workspace-todo` | A todo list bound to the Session's working directory, opened from a button in the Session header. Data lives in `<working directory>/.dsh/todos.json`, so every Session on the same directory shares one list. | host + web client |
 | [`sysmon`](plugins/sysmon) | `@accsci/dsh-sysmon` | Live CPU / memory / GPU meters under the composer. CPU and memory come from `node:os`; GPU needs the Windows performance counters through a small PowerShell sampler and renders as unavailable everywhere else. | host + web client |
@@ -17,22 +17,25 @@ tools. Every plugin ships with dependency-free tests that run on plain Node.
 ## Install
 
 ```bash
-dsh plugin --profile <profile> add @accsci/dsh-workspace-todo
-dsh plugin --profile <profile> add @accsci/dsh-sysmon
+git clone https://github.com/ACCSCI/dsh-plugins
 ```
 
-On **DSH Desktop** the `desktop` profile belongs to the application — install from **Settings →
-Plugins** instead; the CLI refuses to touch that profile while the app manages it.
-
-From a checkout, either path also works:
+Then install one plugin directory into a DSH profile. Either path works:
 
 - **Plugin manager (live profile):** `install_bundle <absolute path to plugins/<name>>`, then refresh
   the GUI page for the browser half.
 - **Official assembly (after a restart):** `dsh plugin --profile <profile> add <absolute path to
   plugins/<name>>`.
 
+On **DSH Desktop** the `desktop` profile belongs to the application — install from **Settings →
+Plugins** (or by path through its plugin manager); the CLI refuses to touch that profile while the
+app manages it.
+
 A plugin directory is the package that declares `dsh.bundle.patch` (its `cordis.patch.yml` inserts
 the loader row) and, for browser halves, `dsh.client` plus a `./client` export.
+
+Nothing here is on npm. The `@accsci/*` names are package identities, not registry coordinates —
+install by path, or point your own profile at a checkout.
 
 ### Changing a plugin
 
@@ -63,9 +66,8 @@ node plugins/sysmon/test/host.mjs
 ```
 
 `check` enforces the invariants that otherwise break silently: the package name versus the `name:`
-its `cordis.patch.yml` inserts, `files[]` entries that exist, a README row and a CI hook for every
-plugin, and `"private": true` staying out of a package this repository exists to publish. CI runs it
-on every push.
+its `cordis.patch.yml` inserts, `files[]` entries that exist, a `./client` export behind every
+`dsh.client` half, and a README row and CI hook for every plugin. CI runs it on every push.
 
 The workspace-todo suite also ships a live check that needs a running GUI:
 
@@ -73,14 +75,16 @@ The workspace-todo suite also ships a live check that needs a running GUI:
 node plugins/workspace-todo/test/live-check.mjs <project dir>
 ```
 
-## Publishing
+## Optional: npm
+
+The manifests are npm-ready (`publishConfig.access: public`, `files` whitelists, no `private`), so
+publishing later is a two-liner:
 
 ```bash
-cd plugins/sysmon && npm publish     # @accsci/dsh-sysmon
+cd plugins/sysmon && npm publish --registry=https://registry.npmjs.org
 ```
 
-Scoped packages default to restricted, so both manifests carry `publishConfig.access: public`.
-Bump `version` before publishing; the check tool fails a package that regains `"private": true`.
+Not doing it is fine: path installs and `link:` dependencies in a profile never touch the registry.
 
 ## License
 
@@ -94,11 +98,11 @@ MIT — see [LICENSE](LICENSE).
 （路由、服务、持久化）+ 可选的浏览器侧 **client 半**（通过启动图注入 Web GUI 的界面贡献）。
 这些插件默认不注册模型工具——它们是给用户用的界面能力，不是给 Agent 用的工具。
 
-每个插件都发布在 npm 的 `@accsci` scope 下，一条命令即可安装：
+插件以目录形式安装（`@accsci/*` 是包名，不是已发布的 npm 坐标）：
 
 ```bash
-dsh plugin --profile <profile> add @accsci/dsh-workspace-todo
-dsh plugin --profile <profile> add @accsci/dsh-sysmon
+git clone https://github.com/ACCSCI/dsh-plugins
+dsh plugin --profile <profile> add <插件目录绝对路径>
 ```
 
 桌面端请在 **设置 → 插件** 里装：`desktop` profile 归 Electron 应用管理，命令行改不了它。
@@ -113,5 +117,5 @@ dsh plugin --profile <profile> add @accsci/dsh-sysmon
 
 **自测**：`node tools/check.mjs` 校验清单一致性并跑完所有离线用例；CI 每次 push 都跑它。
 
-**发布**：`cd plugins/sysmon && npm publish`（scope 包默认 restricted，两个包的 `publishConfig.access`
-都设了 `public`）。
+**发布（可选）**：`cd plugins/sysmon && npm publish --registry=https://registry.npmjs.org`。不发布也
+不影响任何用法——按路径装、profile 里用 `link:`，都不经过 registry。
