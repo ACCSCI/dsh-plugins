@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Task Notifier",
+    "description": "Shows an in-page toast, a desktop notification, and a chime when a task finishes, fails, or waits for your decision."
+  }
+}

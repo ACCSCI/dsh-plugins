@@ -1,0 +1,5 @@
+# Local request/debug trace the Host half can write
+.debug/
+
+# Dependencies, should the plugin ever grow one
+node_modules/
