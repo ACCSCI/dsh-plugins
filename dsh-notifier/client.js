@@ -5,7 +5,7 @@
  * frame overlay, and the list persists across reloads.
  */
 window.__ModuleLoader__.load({
-  id: '@local/dsh-notifier',
+  id: '@accsci/dsh-notifier',
   factory(require) {
     const React = require('react')
     const h = React.createElement

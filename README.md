@@ -13,7 +13,7 @@ tools. Every plugin ships with dependency-free tests that run on plain Node.
 | --- | --- | --- | --- |
 | [`workspace-todo`](plugins/workspace-todo) | `@accsci/dsh-workspace-todo` | A todo list bound to the Session's working directory, opened from a button in the Session header. Data lives in `<working directory>/.dsh/todos.json`, so every Session on the same directory shares one list. | host + web client |
 | [`sysmon`](plugins/sysmon) | `@accsci/dsh-sysmon` | Live CPU / memory / GPU meters under the composer. CPU and memory come from `node:os`; GPU needs the Windows performance counters through a small PowerShell sampler and renders as unavailable everywhere else. | host + web client |
-| [`dsh-notifier`](dsh-notifier) | `@local/dsh-notifier` | Tells you when a task finished or failed: a header bell opens a notification centre grouped by Workspace (unread badge, per-item read, mark all read, clear all), with a toast, a chime and a desktop notice. Quiet hours record silently; visiting a Session marks its notifications read, and every row, toast and desktop notice opens the Session it describes. | host + web client |
+| [`dsh-notifier`](dsh-notifier) | `@accsci/dsh-notifier` | Tells you when a task finished or failed: a header bell opens a notification centre grouped by Workspace (unread badge, per-item read, mark all read, clear all), with a toast, a chime and a desktop notice. Quiet hours record silently; visiting a Session marks its notifications read, and every row, toast and desktop notice opens the Session it describes. | host + web client |
 
 ## Install
 

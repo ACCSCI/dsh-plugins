@@ -64,7 +64,7 @@ const ReactShim = {
 }
 
 new Function('window', source)(globalThis.window)
-if (!spec || spec.id !== '@local/dsh-notifier') throw new Error(`bad module id: ${spec && spec.id}`)
+if (!spec || spec.id !== '@accsci/dsh-notifier') throw new Error(`bad module id: ${spec && spec.id}`)
 
 const registered = []
 const opened = []
