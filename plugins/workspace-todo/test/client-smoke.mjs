@@ -189,7 +189,7 @@ define('fetch', async (url, init) => {
 /** The icon bases the plugin asks for, decoupled from any one export name. */
 const ICON_BASES = [
   'Checklist', 'Queue', 'Loading', 'Check', 'Warning', 'Clock', 'ChevronDown', 'ChevronLeft', 'ChevronRight',
-  'AlarmClock', 'ListPen', 'Trash', 'Refresh', 'Close', 'Plus',
+  'AlarmClock', 'ListPen', 'Trash', 'Refresh', 'Close', 'Plus', 'ArrowUp', 'Edit',
 ]
 
 /** Shipped shells disagree on the suffix: the desktop build uses these two. */
@@ -729,6 +729,110 @@ holdState = false
 check('a late read does not erase an edit made while it was in flight', textOf(renderPanel()).includes('竞态条目'))
 const raceSave = requests.filter((entry) => entry.url.includes('/workspace-todo/api/save')).map((entry) => JSON.parse(entry.init.body)).pop()
 check('the edit still reaches the host', raceSave !== null && raceSave.todos.some((todo) => todo.title === '竞态条目'), JSON.stringify(raceSave && raceSave.todos.map((todo) => todo.title)))
+
+/* ------------------------------------------------------------------ */
+/* 4e. right-click a row: 置顶 and 编辑                                 */
+/* ------------------------------------------------------------------ */
+
+/** Titles in render order — the row name is the same button the panel copies. */
+const namesOf = (tree) => tree
+  .filter((node) => typeof node.props.className === 'string' && node.props.className.split(' ').includes('wst-name'))
+  .map((node) => textOf([node]))
+
+const rightClickRow = (index, x = 300, y = 260) => {
+  const row = rowsOf(renderPanel())[index]
+  if (row === undefined) throw new Error(`harness: no row at ${String(index)}`)
+  row.props.onContextMenu({ preventDefault() {}, clientX: x, clientY: y })
+  return renderPanel()
+}
+const menuItem = (id) => renderPanel().find((node) => node.props['data-ctx-item'] === id)
+
+panelTree = renderPanel()
+const namesBefore = namesOf(panelTree)
+check('the list has at least two rows to act on', namesBefore.length >= 2, JSON.stringify(namesBefore))
+
+const pinTarget = namesBefore[1]
+let menuTree = rightClickRow(1)
+const ctxMenu = menuTree.find((node) => node.props['data-wst-surface'] === 'context')
+check('right-clicking a row opens its menu', ctxMenu !== undefined)
+check('the row menu is a menu surface that escapes the panel', ctxMenu !== undefined && ctxMenu.props.role === 'menu')
+check('the menu offers 置顶 and 编辑', ctxMenu !== undefined && ['置顶', '编辑'].every((label) => textOf([ctxMenu]).includes(label)), ctxMenu ? textOf([ctxMenu]) : 'no menu')
+check('the menu opens at the pointer, clamped into the viewport', ctxMenu !== undefined && ctxMenu.props.style.left === 300 && ctxMenu.props.style.top === 260, ctxMenu ? JSON.stringify(ctxMenu.props.style) : 'none')
+check('the menu items carry the app icon set', menuTree.some((node) => node.props['data-icon'] === `Icon${'ArrowUp'}${APP_SUFFIX}`), 'no arrow glyph')
+
+menuItem('pin').props.onClick()
+panelTree = renderPanel()
+check('置顶 closes the menu', panelTree.every((node) => node.props['data-wst-surface'] !== 'context'))
+check('置顶 moves that row to the head of the list', namesOf(panelTree)[0] === pinTarget, `${pinTarget} → ${JSON.stringify(namesOf(panelTree))}`)
+check('置顶 reports itself in the footer', textOf([findByClass(panelTree, 'wst-foot')]).includes('已置顶'), textOf([findByClass(panelTree, 'wst-foot')]))
+
+await sleep(450)
+const pinnedSave = requests.filter((entry) => entry.url.includes('/workspace-todo/api/save')).map((entry) => JSON.parse(entry.init.body)).pop()
+check('the pinned order reaches the host', pinnedSave !== null && pinnedSave.todos[0].title === pinTarget, JSON.stringify(pinnedSave && pinnedSave.todos.map((todo) => todo.title)))
+
+menuTree = rightClickRow(0, 320, 240)
+const headPin = menuTree.find((node) => node.props['data-ctx-item'] === 'pin')
+check('置顶 is disabled on the row already at the head', headPin !== undefined && headPin.props.disabled === true, headPin ? String(headPin.props.disabled) : 'no item')
+
+documentStub.listeners.get('keydown')({ key: 'Escape' })
+panelTree = renderPanel()
+check('Escape closes the row menu and keeps the panel', panelTree.every((node) => node.props['data-wst-surface'] !== 'context') && findByClass(panelTree, 'wst-panel') !== undefined)
+
+/* --- 编辑: the title becomes an input in the row itself ----------- */
+
+const renameInputOf = (tree) => tree.find((node) => node.type === 'input' && node.props['aria-label'] === '编辑标题')
+
+rightClickRow(0, 320, 240)
+menuItem('edit').props.onClick()
+panelTree = renderPanel()
+let renameInput = renameInputOf(panelTree)
+check('编辑 turns the title into an inline input', renameInput !== undefined && renameInput.props.value === pinTarget, renameInput ? String(renameInput.props.value) : 'no input')
+check('only the edited row is in rename mode', panelTree.filter((node) => node.type === 'input' && node.props['aria-label'] === '编辑标题').length === 1)
+check('the edited row is marked as such', rowsOf(panelTree)[0] !== undefined && rowsOf(panelTree)[0].props['data-editing'] === 'true')
+
+renameInput.props.onChange({ target: { value: '改名后的条目' } })
+panelTree = renderPanel()
+renameInput = renameInputOf(panelTree)
+check('the rename input is controlled', renameInput !== undefined && renameInput.props.value === '改名后的条目', renameInput ? String(renameInput.props.value) : 'gone')
+
+renameInput.props.onKeyDown({ key: 'Enter', preventDefault() {} })
+panelTree = renderPanel()
+check('Enter commits the new title', renameInputOf(panelTree) === undefined && textOf(panelTree).includes('改名后的条目'))
+
+await sleep(450)
+const renamedSave = requests.filter((entry) => entry.url.includes('/workspace-todo/api/save')).map((entry) => JSON.parse(entry.init.body)).pop()
+check('the renamed title reaches the host', renamedSave !== null && renamedSave.todos[0].title === '改名后的条目', JSON.stringify(renamedSave && renamedSave.todos[0] && renamedSave.todos[0].title))
+check('a rename keeps the rest of the row', renamedSave !== null && renamedSave.todos[0].status === 'todo' && Array.isArray(renamedSave.todos[0].subtasks) && typeof renamedSave.todos[0].id === 'string', JSON.stringify(renamedSave && renamedSave.todos[0]))
+
+/* Escape drops the draft instead of writing it. */
+rightClickRow(0)
+menuItem('edit').props.onClick()
+renderPanel().find((node) => node.type === 'input' && node.props['aria-label'] === '编辑标题').props.onChange({ target: { value: '不该保存的名字' } })
+renameInputOf(renderPanel()).props.onKeyDown({ key: 'Escape', preventDefault() {}, stopPropagation() {} })
+panelTree = renderPanel()
+check('Escape drops the draft and keeps the stored title', renameInputOf(panelTree) === undefined && textOf(panelTree).includes('改名后的条目') && textOf(panelTree).includes('不该保存的名字') === false, textOf(panelTree).slice(0, 80))
+
+/* An emptied title must not blank the row. */
+rightClickRow(0)
+menuItem('edit').props.onClick()
+panelTree = renderPanel()
+renameInputOf(panelTree).props.onChange({ target: { value: '   ' } })
+renameInputOf(renderPanel()).props.onKeyDown({ key: 'Enter', preventDefault() {} })
+panelTree = renderPanel()
+check('an emptied title is refused, not written', renameInputOf(panelTree) === undefined && textOf(panelTree).includes('改名后的条目') && textOf(panelTree).includes('标题不能为空'), textOf([findByClass(panelTree, 'wst-foot')]))
+
+/* A right-click inside a text field belongs to the browser. */
+rightClickRow(0)
+menuItem('edit').props.onClick()
+panelTree = renderPanel()
+let prevented = false
+rowsOf(panelTree)[0].props.onContextMenu({
+  preventDefault() { prevented = true }, clientX: 10, clientY: 10, target: new FakeElement('input, textarea'),
+})
+check('right-click inside a text field keeps the browser menu', prevented === false)
+check('...and opens no row menu', renderPanel().every((node) => node.props['data-wst-surface'] !== 'context'))
+documentStub.listeners.get('keydown')({ key: 'Escape' })
+check('Escape leaves rename mode without closing the panel', renameInputOf(renderPanel()) === undefined && findByClass(renderPanel(), 'wst-panel') !== undefined)
 
 /* ------------------------------------------------------------------ */
 /* 5. other shell builds: legacy icon names, and no Menu primitive     */

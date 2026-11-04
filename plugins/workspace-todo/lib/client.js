@@ -70,6 +70,19 @@ window.__ModuleLoader__.load({
 			return react.createElement("span", { className: "wst-glyph", style: { color: "var(" + colorToken + ")" } }, glyph);
 		}
 
+		/**
+		 * The first base name this build exports. Icon sets get renamed between
+		 * shells, and a menu action matters more than its glyph: try the plausible
+		 * names in order and fall back to a label-only row rather than a crash.
+		 */
+		function iconFrom(bases, props) {
+			for (const base of bases) {
+				const glyph = iconOf(base, props);
+				if (glyph !== null) return glyph;
+			}
+			return null;
+		}
+
 		const API_BASE = "/workspace-todo/api";
 		const HEADER_SLOT = "conversation.session.header.utilities";
 		const OVERLAY_SLOT = "shell.overlay";
@@ -212,6 +225,12 @@ window.__ModuleLoader__.load({
 .wst-menu{position:absolute;z-index:2;top:calc(100% + 4px);left:0;min-width:132px;padding:4px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22));border-radius:10px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));box-shadow:0 16px 40px -12px rgba(0,0,0,.35);animation:wst-in .14s cubic-bezier(.2,.8,.2,1)}
 .wst-menu-item{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border:0;border-radius:7px;background:transparent;color:inherit;font-family:inherit;font-size:12px;text-align:left;cursor:pointer;transition:background .12s ease}
 .wst-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14))}
+.wst-ctx{position:fixed;z-index:70;min-width:150px;padding:4px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22));border-radius:10px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary,inherit);box-shadow:0 16px 40px -12px rgba(0,0,0,.35),0 2px 8px -2px rgba(0,0,0,.18);font-family:inherit;font-size:12px;animation:wst-in .12s cubic-bezier(.2,.8,.2,1)}
+.wst-ctx-item{display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;border:0;border-radius:7px;background:transparent;color:inherit;font-family:inherit;font-size:12px;text-align:left;cursor:pointer;transition:background .12s ease}
+.wst-ctx-item:hover:not(:disabled),.wst-ctx-item:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.14));outline:none}
+.wst-ctx-item:disabled{opacity:.42;cursor:default}
+.wst-edit{height:26px;padding:0 8px;font-size:12px}
+.wst-edit-actions{display:inline-flex;align-items:center;gap:2px;flex:none}
 .wst-scrim{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.32);backdrop-filter:blur(2px);animation:wst-fade .14s ease}
 .wst-modal{width:min(340px,calc(100vw - 32px));padding:14px 15px;border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22));border-radius:14px;background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-layer-1,#fff));color:var(--dsw-alias-label-primary,inherit);box-shadow:0 24px 56px -20px rgba(0,0,0,.5);font-family:inherit;font-size:12px;animation:wst-in .16s cubic-bezier(.2,.8,.2,1)}
 .wst-modal-title{font-size:13px;font-weight:600;margin-bottom:6px}
@@ -223,7 +242,7 @@ window.__ModuleLoader__.load({
 @keyframes wst-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-3px) scale(.99)}}
 @keyframes wst-fade{from{opacity:0}to{opacity:1}}
 @keyframes wst-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.wst-panel,.wst-panel[data-state],.wst-detail,.wst-toast,.wst-list,.wst-spin,.wst-cal,.wst-menu{animation:none!important}.wst-btn,.wst-chip,.wst-icon-btn,.wst-row,.wst-status,.wst-prio,.wst-date,.wst-mini,.wst-input,.wst-name,.wst-cal-day,.wst-menu-item{transition:none!important}}
+@media (prefers-reduced-motion:reduce){.wst-panel,.wst-panel[data-state],.wst-detail,.wst-toast,.wst-list,.wst-spin,.wst-cal,.wst-menu,.wst-ctx{animation:none!important}.wst-btn,.wst-chip,.wst-icon-btn,.wst-row,.wst-status,.wst-prio,.wst-date,.wst-mini,.wst-input,.wst-name,.wst-cal-day,.wst-menu-item,.wst-ctx-item{transition:none!important}}
 `;
 
 		/** Content-hashed style tag id, so a hot-reloaded stylesheet replaces the old one. */
@@ -297,6 +316,18 @@ window.__ModuleLoader__.load({
 					closing: false,
 					/** `<todo id>:<status|priority|date>` of the row popup that is open, or null. */
 					openMenu: null,
+					/**
+					 * The row whose right-click menu is open — `{ id, x, y }` in viewport
+					 * coordinates — or null. Position is kept here (not in the row) so the
+					 * menu survives the list re-rendering under it.
+					 */
+					contextMenu: null,
+					/**
+					 * The row being renamed inline, `{ id, draft }`, or null. The draft lives
+					 * here rather than in the panel so the document-level Escape chain can
+					 * cancel it and a hot reload does not drop what the user has typed.
+					 */
+					edit: null,
 					/** The 清空已完成 confirmation dialog is showing. */
 					confirmClear: false,
 					anchor: null,
@@ -312,6 +343,14 @@ window.__ModuleLoader__.load({
 		const shared = (globalThis[SHARED_KEY] ??= createShared());
 		const state = shared.state;
 		const listeners = shared.listeners;
+
+		/*
+		 * A hot reload inherits the store the previous module instance created, so
+		 * fields a newer build added are absent instead of null. Normalizing here
+		 * keeps every reader on the same shape after an in-place upgrade.
+		 */
+		state.contextMenu ??= null;
+		state.edit ??= null;
 
 		function emit(patch) {
 			Object.assign(state, patch);
@@ -636,6 +675,58 @@ window.__ModuleLoader__.load({
 			});
 			toast("已清空 " + String(removed) + " 项已完成");
 			return removed;
+		}
+
+		/**
+		 * Move one row to the head of the stored list — the 置顶 action. The order is
+		 * the list's own, so this is exactly the edit a drag to the top makes; it
+		 * acts on the real list, not only on the rows the active filter shows.
+		 * @returns whether the row actually moved.
+		 */
+		function pinToTop(id) {
+			if (rowIndex(state.todos, id) <= 0) return false;
+			updateTodos((todos) => {
+				const index = rowIndex(todos, id);
+				if (index <= 0) return;
+				todos.unshift(todos.splice(index, 1)[0]);
+			});
+			return true;
+		}
+
+		/* --- inline rename ------------------------------------------------ */
+
+		function beginEdit(id) {
+			const row = state.todos.find((todo) => todo.id === id);
+			if (row === undefined) return;
+			emit({ edit: { id, draft: row.title }, contextMenu: null, openMenu: null });
+		}
+
+		function changeEditDraft(value) {
+			if (state.edit === null) return;
+			emit({ edit: { id: state.edit.id, draft: value } });
+		}
+
+		/** Leave rename mode without writing; the stored title stays as it was. */
+		function closeEdit() {
+			if (state.edit !== null) emit({ edit: null });
+		}
+
+		/**
+		 * Keep what was typed. Leaving rename mode first makes a blur that arrives
+		 * after Enter (or after Escape) a no-op instead of a second commit.
+		 */
+		function commitEdit() {
+			const edit = state.edit;
+			if (edit === null) return;
+			emit({ edit: null });
+			const row = state.todos.find((todo) => todo.id === edit.id);
+			if (row === undefined) return;
+			const title = edit.draft.trim();
+			if (title === "") {
+				toast("标题不能为空，已保留原内容");
+				return;
+			}
+			if (title !== row.title) patchTodo(edit.id, { title });
 		}
 
 		function setFilter(value) {
@@ -1030,12 +1121,139 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+		const CONTEXT_MENU_WIDTH = 168;
+		const CONTEXT_MENU_HEIGHT = 92;
+
+		/** Keep the pointer-anchored menu inside the viewport. */
+		function clampMenu(left, top) {
+			const viewportWidth = Number.isFinite(window.innerWidth) ? window.innerWidth : 1024;
+			const viewportHeight = Number.isFinite(window.innerHeight) ? window.innerHeight : 720;
+			const margin = 8;
+			const x = Number.isFinite(left) ? left : margin;
+			const y = Number.isFinite(top) ? top : margin;
+			return {
+				left: Math.max(margin, Math.min(x, viewportWidth - CONTEXT_MENU_WIDTH - margin)),
+				top: Math.max(margin, Math.min(y, viewportHeight - CONTEXT_MENU_HEIGHT - margin)),
+			};
+		}
+
+		/**
+		 * The row menu a right-click opens: 置顶 and 编辑.
+		 *
+		 * The panel clips its own overflow, so this renders through the frame layer
+		 * at the pointer — the same escape hatch the due-date calendar uses. It
+		 * stays out of the store: the row it acts on is passed in, so a list edit
+		 * that removes or reorders rows cannot leave it pointing at nothing.
+		 */
+		function RowContextMenu(props) {
+			const menuRef = react.useRef(null);
+			const position = clampMenu(props.menu.x, props.menu.y);
+			const canPin = props.canPin === true;
+			const items = [
+				{
+					id: "pin",
+					label: "置顶",
+					title: canPin ? "移到清单最前" : "已经在最前",
+					disabled: !canPin,
+					icon: iconFrom(["ArrowUp", "ArrowUpLine", "Top"], { size: 13 }),
+					run: props.onPin,
+				},
+				{
+					id: "edit",
+					label: "编辑",
+					title: "重命名这条待办",
+					disabled: false,
+					icon: iconFrom(["Edit", "Pen", "EditPen", "ListPen"], { size: 13 }),
+					run: props.onEdit,
+				},
+			];
+
+			// Focus the first live item, so the menu is keyboard-ready the moment it opens.
+			react.useEffect(() => {
+				const node = menuRef.current;
+				if (node === null || typeof node.querySelector !== "function") return;
+				const first = node.querySelector('[role="menuitem"]:not(:disabled)');
+				if (first !== null && typeof first.focus === "function") first.focus();
+			}, []);
+
+			// A pointer press anywhere else, or the page moving under it, closes it.
+			react.useEffect(() => {
+				const onPointerDown = (event) => {
+					const node = menuRef.current;
+					if (node !== null && typeof node.contains === "function" && node.contains(event.target)) return;
+					props.onClose();
+				};
+				const dismiss = () => props.onClose();
+				document.addEventListener("pointerdown", onPointerDown, true);
+				window.addEventListener("scroll", dismiss, true);
+				window.addEventListener("resize", dismiss);
+				window.addEventListener("blur", dismiss);
+				return () => {
+					document.removeEventListener("pointerdown", onPointerDown, true);
+					window.removeEventListener("scroll", dismiss, true);
+					window.removeEventListener("resize", dismiss);
+					window.removeEventListener("blur", dismiss);
+				};
+			}, []);
+
+			const onKeyDown = (event) => {
+				if (event.key === "Escape") {
+					event.preventDefault();
+					event.stopPropagation();
+					props.onClose();
+					return;
+				}
+				const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+				if (step === 0) return;
+				event.preventDefault();
+				const node = menuRef.current;
+				if (node === null || typeof node.querySelectorAll !== "function") return;
+				const entries = Array.from(node.querySelectorAll('[role="menuitem"]:not(:disabled)'));
+				if (entries.length === 0) return;
+				const active = document.activeElement;
+				const next = entries[(entries.indexOf(active) + step + entries.length) % entries.length];
+				if (next !== undefined && typeof next.focus === "function") next.focus();
+			};
+
+			const surface = react.createElement(
+				"div",
+				{
+					className: "wst-ctx", role: "menu", ref: menuRef, "data-wst-surface": "context",
+					"aria-label": "待办操作", style: position, onKeyDown,
+					onContextMenu: (event) => event.preventDefault(),
+				},
+				items.map((item) => react.createElement(
+					"button",
+					{
+						key: item.id, type: "button", role: "menuitem", className: "wst-ctx-item",
+						"data-ctx-item": item.id, title: item.title, disabled: item.disabled, tabIndex: -1,
+						onClick: () => {
+							props.onClose();
+							item.run();
+						},
+					},
+					item.icon,
+					react.createElement("span", null, item.label),
+				)),
+			);
+
+			const host = typeof document === "undefined" ? null : document.body;
+			if (host !== null && reactDom !== null && typeof reactDom.createPortal === "function") return reactDom.createPortal(surface, host);
+			return surface;
+		}
+
 		let closeTimer = null;
 
 		/** Close plays the exit animation first, so the panel never blinks out. */
 		function closePanel() {
+			/*
+			 * Closing while a rename is open keeps what was typed: leaving the field
+			 * with the panel would otherwise silently drop it. The write is scheduled
+			 * before the flush below, so it goes out with the panel's other edits.
+			 */
+			commitEdit();
 			flush();
-			emit({ openMenu: null, confirmClear: false });
+			emit({ openMenu: null, contextMenu: null, confirmClear: false });
 			if (state.closing === true) return;
 			emit({ closing: true });
 			closeTimer = setTimeout(() => {
@@ -1123,6 +1341,7 @@ window.__ModuleLoader__.load({
 			const todo = props.todo;
 			const [dropSide, setDropSide] = react.useState(null);
 			const done = todo.status === "done";
+			const editing = props.editing === true;
 			const overdue = todo.due !== null && todo.due !== undefined && !done && todo.due < todayKey();
 			const doneSubtasks = (todo.subtasks || []).filter((entry) => entry.done).length;
 			const priority = PRIORITIES.find((entry) => entry.id === todo.priority) || null;
@@ -1172,12 +1391,62 @@ window.__ModuleLoader__.load({
 					: null,
 			];
 
-			const line1 = react.createElement(
-				"div",
-				{ className: "wst-line1" },
-				react.createElement("button", { type: "button", className: "wst-name", title: "点击复制标题", onClick: () => copyText(todo.title) }, todo.title),
-				tags,
-			);
+			/**
+			 * Rename is inline: the title becomes an input in the row itself, so the
+			 * rest of the row (status, due date, notes) stays visible while it is
+			 * edited. Enter and the tick keep the draft, Escape and the cross drop
+			 * it, and a blur keeps it — clicking anywhere else has to mean "done".
+			 */
+			const line1 = editing
+				? react.createElement(
+					"div",
+					{ className: "wst-line1" },
+					react.createElement("input", {
+						className: "wst-input wst-edit", value: props.editDraft, autoFocus: true,
+						"aria-label": "编辑标题", title: "回车保存，Esc 取消", maxLength: 2000,
+						onFocus: (event) => {
+							if (typeof event.currentTarget.select === "function") event.currentTarget.select();
+						},
+						onChange: (event) => props.onEditChange(event.target.value),
+						onKeyDown: (event) => {
+							if (event.key === "Enter") {
+								event.preventDefault();
+								props.onEditCommit();
+								return;
+							}
+							if (event.key === "Escape") {
+								event.preventDefault();
+								event.stopPropagation();
+								props.onEditCancel();
+							}
+						},
+						onBlur: () => props.onEditCommit(),
+					}),
+					react.createElement(
+						"span",
+						{ className: "wst-edit-actions" },
+						/*
+						 * Both buttons cancel the input's blur on mousedown: a plain click
+						 * would blur first and commit the draft just before 取消 runs.
+						 */
+						react.createElement("button", {
+							type: "button", className: "wst-icon-btn", title: "保存", "aria-label": "保存标题",
+							onMouseDown: (event) => event.preventDefault(),
+							onClick: () => props.onEditCommit(),
+						}, iconOf("Check", { size: 13 })),
+						react.createElement("button", {
+							type: "button", className: "wst-icon-btn", title: "取消", "aria-label": "取消编辑",
+							onMouseDown: (event) => event.preventDefault(),
+							onClick: () => props.onEditCancel(),
+						}, iconOf("Close", { size: 13 })),
+					),
+				)
+				: react.createElement(
+					"div",
+					{ className: "wst-line1" },
+					react.createElement("button", { type: "button", className: "wst-name", title: "点击复制标题", onClick: () => copyText(todo.title) }, todo.title),
+					tags,
+				);
 
 			/** One status/priority pill that opens the app's own menu. */
 			const statusControl = react.createElement(MenuSurface, {
@@ -1320,9 +1589,28 @@ window.__ModuleLoader__.load({
 				)
 				: null;
 
+			/**
+			 * Right-click anywhere on the row opens its menu. A text field keeps the
+			 * browser's own menu — paste, spellcheck and friends are not ours to
+			 * replace, and the rename input needs them most.
+			 */
+			const onRowContextMenu = (event) => {
+				const target = event.target;
+				if (target instanceof Element && typeof target.closest === "function" && target.closest("input, textarea") !== null) return;
+				event.preventDefault();
+				emit({
+					openMenu: null,
+					contextMenu: { id: todo.id, x: event.clientX, y: event.clientY },
+				});
+			};
+
 			return react.createElement(
 				"li",
-				{ className: "wst-row", "data-done": done ? "true" : "false", style, onDragOver, onDrop, onDragLeave },
+				{
+					className: "wst-row", "data-done": done ? "true" : "false",
+					"data-editing": editing ? "true" : "false",
+					style, onDragOver, onDrop, onDragLeave, onContextMenu: onRowContextMenu,
+				},
 				react.createElement("span", {
 					className: "wst-grip", draggable: true, title: "拖动排序", "aria-hidden": "true",
 					onDragStart: (event) => {
@@ -1367,13 +1655,25 @@ window.__ModuleLoader__.load({
 				};
 				const onKeyDown = (event) => {
 					if (event.key === "Escape") {
-						// The confirmation dialog and a row popup each own the first Escape.
+						/*
+						 * Each mode owns the first Escape, innermost first: the
+						 * confirmation dialog, then a row popup, the right-click menu,
+						 * the rename, and only a bare panel lets Escape close it.
+						 */
 						if (state.confirmClear === true) {
 							emit({ confirmClear: false });
 							return;
 						}
+						if (state.contextMenu !== null) {
+							emit({ contextMenu: null });
+							return;
+						}
 						if (state.openMenu !== null) {
 							emit({ openMenu: null });
+							return;
+						}
+						if (state.edit !== null) {
+							closeEdit();
 							return;
 						}
 						closePanel();
@@ -1517,9 +1817,15 @@ window.__ModuleLoader__.load({
 					: visible.map((todo) => react.createElement(TodoRow, {
 						key: todo.id,
 						todo,
+						editing: snapshot.edit !== null && snapshot.edit.id === todo.id,
+						editDraft: snapshot.edit === null ? "" : snapshot.edit.draft,
+						onEditChange: changeEditDraft,
+						onEditCommit: commitEdit,
+						onEditCancel: closeEdit,
 						expanded: expanded[todo.id] === true,
 						menuKey: snapshot.openMenu,
-						onMenuChange: (key) => emit({ openMenu: key }),
+						// One popup at a time: a row popup drops the right-click menu.
+						onMenuChange: (key) => emit({ openMenu: key, contextMenu: null }),
 						onToggleDetail: () => setExpanded(Object.assign({}, expanded, { [todo.id]: expanded[todo.id] !== true })),
 					})),
 			);
@@ -1578,13 +1884,32 @@ window.__ModuleLoader__.load({
 				],
 			});
 
+			/*
+			 * The row menu is resolved against the stored list rather than the
+			 * filtered view: 置顶 reorders the real list, and the menu must keep
+			 * working even if a filter change hides the row it was opened on.
+			 */
+			const menuTodo = snapshot.contextMenu === null || snapshot.contextMenu === undefined
+				? null
+				: todos.find((todo) => todo.id === snapshot.contextMenu.id) || null;
+			const rowMenu = menuTodo === null ? null : react.createElement(RowContextMenu, {
+				key: menuTodo.id,
+				menu: snapshot.contextMenu,
+				canPin: rowIndex(todos, menuTodo.id) > 0,
+				onClose: () => emit({ contextMenu: null }),
+				onPin: () => {
+					if (pinToTop(menuTodo.id)) toast("已置顶");
+				},
+				onEdit: () => beginEdit(menuTodo.id),
+			});
+
 			return react.createElement(
 				"div",
 				{
 					className: "wst-panel", style: panelStyle, ref: panelRef, role: "dialog", "aria-label": "工作区待办清单",
 					"data-state": snapshot.closing === true ? "closing" : "open",
 				},
-				head, addRow, chips, list, foot, confirmDialog,
+				head, addRow, chips, list, foot, confirmDialog, rowMenu,
 			);
 		}
 
