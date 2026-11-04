@@ -1469,9 +1469,43 @@ window.__ModuleLoader__.load({
           t = locale.bind(NS)
         }
 
+        // Navigation is the one thing a Harness update can silently break: the
+        // service may not exist yet when this plugin applies, and an early
+        // capture would keep the miss forever. Resolve it per click, and record
+        // the outcome where the Host trace can show it.
+        const reportNavigation = (detail) => {
+          try {
+            const params = new URLSearchParams()
+            params.set('after', '0')
+            params.set('wait', '0')
+            params.set('p', detail.ok ? 'open-ok' : 'open-fail')
+            params.set('have', detail.have ? '1' : '0')
+            if (detail.sessionId) params.set('sid', String(detail.sessionId).slice(0, 60))
+            if (detail.error) params.set('err', String(detail.error).slice(0, 120))
+            fetch(`${FEED_PATH}?${params.toString()}`, { cache: 'no-store' }).catch(() => {})
+          } catch {
+            /* diagnostics must never block navigation */
+          }
+        }
+
         const openSession = (sessionId) => {
-          if (uiWorkspace && typeof uiWorkspace.openSession === 'function') {
-            uiWorkspace.openSession(sessionId)
+          if (!sessionId) return
+          let service = null
+          try {
+            service = typeof ctx.get === 'function' ? ctx.get('uiWorkspace') : undefined
+          } catch {
+            service = undefined
+          }
+          if (!service) service = uiWorkspace
+          if (!service || typeof service.openSession !== 'function') {
+            reportNavigation({ ok: false, have: false, sessionId, error: 'uiWorkspace missing' })
+            return
+          }
+          try {
+            service.openSession(sessionId)
+            reportNavigation({ ok: true, have: true, sessionId })
+          } catch (error) {
+            reportNavigation({ ok: false, have: true, sessionId, error: (error && error.message) || error })
           }
         }
 

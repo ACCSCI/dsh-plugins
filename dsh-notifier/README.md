@@ -37,7 +37,7 @@ Host 侧解析 `ctx.sessionTitle`、`ctx.workspaceRegistry` 和会话日志里�
 ## 端点
 
 `GET /plugins/dsh-notifier/feed?after=<seq>&wait=<ms>` — 长轮询,有新事件立即返回。
-`after=0&wait=0` 用于首次拉取。端点只监听 127.0.0.1。
+`after=0&wait=0` 用于首次拉取。端点只监听 127.0.0.1。`p=open-ok|open-fail` 是跳转诊断:点通知时回写一次,`.debug/host.log` 里能查到服务是否可用、调用的会话 id 和异常。
 
 ## 开发
 
