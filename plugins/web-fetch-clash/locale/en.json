@@ -1,0 +1,1 @@
+{"meta":{"title":"Clash-aware Web Fetch","description":"Sends the web_fetch tool through your local Clash/mihomo proxy, so fake-IP DNS under TUN mode stops tripping the public-address guard, and 系统代理 mode works too."}}

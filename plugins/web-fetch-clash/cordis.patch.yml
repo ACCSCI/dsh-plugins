@@ -1,0 +1,17 @@
+# dsh-web-fetch-clash bundle 层
+#
+# 1) 注册一个继承内置 HttpFetchProvider 的 fetch provider（id: clash）
+# 2) 把 `web` 这一行的 fetchProvider 指到它
+#
+# 只覆盖传输层：重定向、大小上限、编码识别、错误码仍然走官方实现。
+- insert:
+    - id: web-fetch-clash
+      name: 'dsh-web-fetch-clash'
+      config: {}
+
+# 覆盖必须写出整份 config（patch 是替换而不是合并），所以 searchProvider 一并带上。
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  config:
+    searchProvider: deepseek-official
+    fetchProvider: clash

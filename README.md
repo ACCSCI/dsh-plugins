@@ -14,6 +14,7 @@ tools. Every plugin ships with dependency-free tests that run on plain Node.
 | [`workspace-todo`](plugins/workspace-todo) | `@accsci/dsh-workspace-todo` | A todo list bound to the Session's working directory, opened from a button in the Session header. Data lives in `<working directory>/.dsh/todos.json`, so every Session on the same directory shares one list. | host + web client |
 | [`sysmon`](plugins/sysmon) | `@accsci/dsh-sysmon` | Live CPU / memory / GPU meters under the composer. CPU and memory come from `node:os`; GPU needs the Windows performance counters through a small PowerShell sampler and renders as unavailable everywhere else. | host + web client |
 | [`dsh-notifier`](dsh-notifier) | `@accsci/dsh-notifier` | Tells you when a task finished or failed: a header bell opens a notification centre grouped by Workspace (unread badge, per-item read, mark all read, clear all), with a toast, a chime and a desktop notice. Quiet hours record silently; visiting a Session marks its notifications read, and every row, toast and desktop notice opens the Session it describes. | host + web client |
+| [`web-fetch-clash`](plugins/web-fetch-clash) | `dsh-web-fetch-clash` | Routes the `web_fetch` tool through the local Clash / mihomo proxy, so fake-IP DNS under TUN no longer trips the public-address guard. Transport only: redirects, size caps and encoding still come from the official provider. | host |
 
 ## Install
 
@@ -36,7 +37,9 @@ A plugin directory is the package that declares `dsh.bundle.patch` (its `cordis.
 the loader row) and, for browser halves, `dsh.client` plus a `./client` export.
 
 Nothing here is on npm. The `@accsci/*` names are package identities, not registry coordinates —
-install by path, or point your own profile at a checkout.
+install by path, or point your own profile at a checkout. A personal bundle may keep an unscoped
+`dsh-*` name as long as it stays `private`: that is the name it was installed under, and renaming it
+would be a profile migration rather than a fix.
 
 ### Changing a plugin
 
@@ -50,8 +53,12 @@ install by path, or point your own profile at a checkout.
 
 ```
 plugins/<name>/     # package.json, cordis.patch.yml, lib/, test/, README.md
+dsh-notifier/       # a personal bundle that predates plugins/, checked the same way
 tools/check.mjs     # the repository self-check
 ```
+
+Plugin packages may also sit at the repository root when they carry their own `cordis.patch.yml`;
+`tools/check.mjs` discovers both layouts, so a root-level packge cannot drift out of the checks.
 
 This repository is source only: the DSH profile that installs these packages is personal and is not
 published here.
@@ -78,14 +85,16 @@ node plugins/workspace-todo/test/live-check.mjs <project dir>
 
 ## Optional: npm
 
-The manifests are npm-ready (`publishConfig.access: public`, `files` whitelists, no `private`), so
-publishing later is a two-liner:
+The `@accsci/*` manifests are npm-ready (`publishConfig.access: public`, `files` whitelists, no
+`private`), so publishing later is a two-liner:
 
 ```bash
 cd plugins/sysmon && npm publish --registry=https://registry.npmjs.org
 ```
 
 Not doing it is fine: path installs and `link:` dependencies in a profile never touch the registry.
+The two `private` personal bundles (`dsh-notifier`, `dsh-web-fetch-clash`) are deliberately not
+publishable — they carry machine- and network-specific behaviour.
 
 ## License
 
@@ -112,6 +121,8 @@ dsh plugin --profile <profile> add <插件目录绝对路径>
 | --- | --- |
 | [`workspace-todo`](plugins/workspace-todo) | 绑定到「当前会话工作目录」的待办清单：会话顶栏一个按钮打开浮层面板；数据存在 `<工作目录>/.dsh/todos.json`，同一目录下的所有会话共享一份清单 |
 | [`sysmon`](plugins/sysmon) | 输入框下方的 CPU / 内存 / GPU 实时读数：CPU 与内存取自 `node:os`，全平台可用；GPU 走 Windows 性能计数器（PowerShell 采样器），其他平台显示为不可用 |
+| [`dsh-notifier`](dsh-notifier) | 任务完成/失败时提醒：顶栏铃铛打开按工作区归组的通知中心（未读徽标、单条已读、全部已读、清空），另有 toast、提示音与桌面通知；免打扰时段静默记录；点开任一行/通知都跳到对应会话 |
+| [`web-fetch-clash`](plugins/web-fetch-clash) | 让 `web_fetch` 走本机 Clash / mihomo 代理：TUN 模式的 fake-IP 解析不再被「非公网地址」拦下。只替换传输层，重定向、大小上限、编码识别仍用官方实现 |
 
 **改动生效规则**：改 `lib/client.js` 刷新页面即可；改 `lib/index.js` 必须重启 DSH（加载器用普通
 `import()` 取模块，进程内的 ESM 缓存不会因为停用/启用 entry 或重装 bundle 而失效）。
