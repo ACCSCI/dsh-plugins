@@ -296,10 +296,24 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // A Notification whose last reference is collected loses its click handler
+    // in the desktop shell — and collection is likeliest exactly when the window
+    // sits in the background. Hold every live notice until it settles.
+    const liveNotices = new Set()
+
+    function releaseNotice(notice) {
+      liveNotices.delete(notice)
+    }
+
     function desktopNotice(title, body, tag, onActivate) {
       try {
         if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
         const notice = new Notification(title, { body, tag, silent: true })
+        liveNotices.add(notice)
+        if (liveNotices.size > 12) {
+          const oldest = liveNotices.values().next().value
+          liveNotices.delete(oldest)
+        }
         notice.onclick = () => {
           // Clicking the desktop notice must land on the Session it describes.
           try {
@@ -317,9 +331,26 @@ window.__ModuleLoader__.load({
           } catch {
             /* already dismissed */
           }
+          releaseNotice(notice)
         }
+        notice.onclose = () => releaseNotice(notice)
+        notice.onerror = () => releaseNotice(notice)
       } catch {
         /* platform without the Notifications API */
+      }
+    }
+
+    /**
+     * The desktop shell only raises its window when the main process asks it to:
+     * a renderer window.focus() in the background is ignored. The Host turns
+     * this request into a real activation.
+     */
+    function requestActivation() {
+      try {
+        const url = `${FEED_PATH}?after=0&wait=0&p=activate`
+        fetch(url, { cache: 'no-store' }).catch(() => {})
+      } catch {
+        /* activation is best effort */
       }
     }
 
@@ -688,7 +719,7 @@ window.__ModuleLoader__.load({
         markRead(item.key, true)
         if (!item.sessionId) return
         try {
-          openSession(item.sessionId)
+          openSession(item.sessionId, 'row')
         } catch {
           /* the Session may be gone */
         }
@@ -1106,10 +1137,30 @@ window.__ModuleLoader__.load({
               } catch {
                 /* the entry may already be gone */
               }
+              if (!fact.sessionId) return
+              // Coming from the background needs three things in this order:
+              // raise the window, navigate, then re-assert once the shell has
+              // restored its own selection.
+              let wasHidden = false
               try {
-                if (fact.sessionId) openSession(fact.sessionId)
+                wasHidden = Boolean(document.hidden)
+              } catch {
+                /* document unavailable */
+              }
+              requestActivation()
+              try {
+                openSession(fact.sessionId, 'desktop')
               } catch {
                 /* the Session may be gone */
+              }
+              if (wasHidden) {
+                setTimeout(() => {
+                  try {
+                    openSession(fact.sessionId, 'desktop-retry')
+                  } catch {
+                    /* the Session may be gone */
+                  }
+                }, 750)
               }
             })
             pushToast({ ...item, expiresAt: Date.now() + (TOAST_TTL[kind] || 6000) })
@@ -1301,7 +1352,7 @@ window.__ModuleLoader__.load({
         markRead(item.key, true)
         if (item.sessionId) {
           try {
-            openSession(item.sessionId)
+            openSession(item.sessionId, 'toast')
           } catch {
             /* the Session may be gone */
           }
@@ -1480,6 +1531,9 @@ window.__ModuleLoader__.load({
             params.set('wait', '0')
             params.set('p', detail.ok ? 'open-ok' : 'open-fail')
             params.set('have', detail.have ? '1' : '0')
+            if (detail.source) params.set('src', detail.source)
+            params.set('vis', detail.visible ? '1' : '0')
+            params.set('foc', detail.focused ? '1' : '0')
             if (detail.sessionId) params.set('sid', String(detail.sessionId).slice(0, 60))
             if (detail.error) params.set('err', String(detail.error).slice(0, 120))
             fetch(`${FEED_PATH}?${params.toString()}`, { cache: 'no-store' }).catch(() => {})
@@ -1488,8 +1542,16 @@ window.__ModuleLoader__.load({
           }
         }
 
-        const openSession = (sessionId) => {
+        const openSession = (sessionId, source) => {
           if (!sessionId) return
+          let visible = true
+          let focused = true
+          try {
+            visible = !document.hidden
+            focused = typeof document.hasFocus === 'function' ? document.hasFocus() : true
+          } catch {
+            /* document unavailable */
+          }
           let service = null
           try {
             service = typeof ctx.get === 'function' ? ctx.get('uiWorkspace') : undefined
@@ -1498,14 +1560,37 @@ window.__ModuleLoader__.load({
           }
           if (!service) service = uiWorkspace
           if (!service || typeof service.openSession !== 'function') {
-            reportNavigation({ ok: false, have: false, sessionId, error: 'uiWorkspace missing' })
+            reportNavigation({
+              ok: false,
+              have: false,
+              sessionId,
+              source: source || 'unknown',
+              visible,
+              focused,
+              error: 'uiWorkspace missing',
+            })
             return
           }
           try {
             service.openSession(sessionId)
-            reportNavigation({ ok: true, have: true, sessionId })
+            reportNavigation({
+              ok: true,
+              have: true,
+              sessionId,
+              source: source || 'unknown',
+              visible,
+              focused,
+            })
           } catch (error) {
-            reportNavigation({ ok: false, have: true, sessionId, error: (error && error.message) || error })
+            reportNavigation({
+              ok: false,
+              have: true,
+              sessionId,
+              source: source || 'unknown',
+              visible,
+              focused,
+              error: (error && error.message) || error,
+            })
           }
         }
 

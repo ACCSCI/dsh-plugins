@@ -7,6 +7,7 @@
  */
 
 import { appendFileSync, mkdirSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -14,6 +15,57 @@ const FEED_PATH = '/plugins/dsh-notifier/feed'
 const MAX_BUFFERED = 200
 const ERROR_DEDUPE_MS = 8000
 const MAX_WAIT_MS = 25000
+const ACTIVATE_COOLDOWN_MS = 900
+
+// Windows raises a window only for the process it considers foreground, and a
+// renderer `window.focus()` in the background is ignored. Restoring and then
+// foregrounding the shell's own window is the one thing a notification click
+// cannot do from the page.
+const ACTIVATE_SCRIPT = [
+  "Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;",
+  'public class DshNotifierWin{',
+  '[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);',
+  '[DllImport("user32.dll")]public static extern bool ShowWindowAsync(IntPtr h,int c);',
+  '[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);}\';',
+  "$p=Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue",
+  '| Where-Object {$_.MainWindowHandle -ne 0} | Select-Object -First 1;',
+  'if($p){$h=$p.MainWindowHandle;',
+  '[void][DshNotifierWin]::ShowWindowAsync($h,9);',
+  '[void][DshNotifierWin]::ShowWindowAsync($h,5);',
+  '[void][DshNotifierWin]::SetForegroundWindow($h)}',
+].join(' ')
+
+let lastActivation = 0
+
+function spawnActivator(command) {
+  return new Promise((resolve) => {
+    try {
+      const child = spawn(
+        command,
+        ['-NoLogo', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ACTIVATE_SCRIPT],
+        { windowsHide: true, stdio: 'ignore', detached: true },
+      )
+      child.on('error', () => resolve(false))
+      child.on('spawn', () => {
+        child.unref()
+        resolve(true)
+      })
+    } catch {
+      resolve(false)
+    }
+  })
+}
+
+/** Restore and foreground the shell window; best effort, rate limited. */
+async function activateWindow() {
+  if (process.platform !== 'win32') return false
+  const now = Date.now()
+  if (now - lastActivation < ACTIVATE_COOLDOWN_MS) return false
+  lastActivation = now
+  const ok = (await spawnActivator('pwsh.exe')) || (await spawnActivator('powershell.exe'))
+  trace('activate', { ok })
+  return ok
+}
 
 // Local request trace: the Web page runs on the `dsh-app://` scheme in the
 // desktop shell, so "does the fetch even arrive?" is not answerable from the
@@ -131,6 +183,15 @@ function serve(req, res, feed) {
   }
 
   const after = Math.max(0, Number(url.searchParams.get('after')) || 0)
+
+  // The page asks the Host to raise the shell window when a notification is
+  // clicked while the app sits behind another window.
+  if (url.searchParams.get('p') === 'activate') {
+    activateWindow()
+      .then((ok) => respond(res, 200, { activated: ok }))
+      .catch(() => respond(res, 200, { activated: false }))
+    return
+  }
 
   // `tail=1` lets a freshly loaded page start from "now" without replaying
   // notifications it never had a chance to show.
