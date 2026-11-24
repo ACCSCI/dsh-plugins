@@ -34,6 +34,7 @@ window.__ModuleLoader__.load({
         markRead: 'Mark read',
         unread: 'unread',
         enableDesktop: 'Enable desktop notifications',
+        subagentToggle: 'Subagent notifications',
         dnd: 'Quiet hours',
         muted: 'muted',
         dndFrom: 'Quiet from',
@@ -61,6 +62,7 @@ window.__ModuleLoader__.load({
         markRead: '标记已读',
         unread: '条未读',
         enableDesktop: '开启桌面通知',
+        subagentToggle: '子代理通知',
         dnd: '免打扰',
         muted: '静音中',
         dndFrom: '免打扰开始',
@@ -108,7 +110,7 @@ window.__ModuleLoader__.load({
       items: [],
       open: false,
       activeSessionId: null,
-      settings: { dnd: false, dndFrom: '22:00', dndTo: '08:00' },
+      settings: { dnd: false, dndFrom: '22:00', dndTo: '08:00', notifySubagents: true },
       listeners: new Set(),
     }
 
@@ -247,6 +249,11 @@ window.__ModuleLoader__.load({
       if (!path) return ''
       const parts = String(path).split(/[\\/]+/).filter(Boolean)
       return parts.length ? parts[parts.length - 1] : ''
+    }
+
+    /** Delegated work: either the origin marker or the durable parent link. */
+    function isSubagent(item) {
+      return Boolean(item && (item.origin === 'subagent' || item.parentSessionId))
     }
 
     /** The headline of a notification: its Session title, else its directory. */
@@ -884,32 +891,47 @@ window.__ModuleLoader__.load({
 
       const settings = state.settings
       const quiet = isQuiet(settings)
-      const switchStyle = {
-        appearance: 'none',
-        border: 0,
-        margin: 0,
-        padding: 0,
-        position: 'relative',
-        width: 30,
-        height: 17,
-        flex: 'none',
-        borderRadius: 999,
-        cursor: 'pointer',
-        background: settings.dnd
-          ? 'var(--dsw-alias-brand-primary)'
-          : 'var(--dsw-alias-border-l2)',
-        transition: 'background 120ms ease',
-      }
-      const knobStyle = {
-        position: 'absolute',
-        top: 2,
-        left: settings.dnd ? 15 : 2,
-        width: 13,
-        height: 13,
-        borderRadius: 999,
-        background: '#fff',
-        transition: 'left 120ms ease',
-      }
+      const renderSwitch = (on, onToggle, label) =>
+        h(
+          'button',
+          {
+            key: 'switch',
+            type: 'button',
+            role: 'switch',
+            'aria-checked': on ? 'true' : 'false',
+            'aria-label': label,
+            onClick: onToggle,
+            style: {
+              appearance: 'none',
+              border: 0,
+              margin: 0,
+              padding: 0,
+              position: 'relative',
+              width: 30,
+              height: 17,
+              flex: 'none',
+              borderRadius: 999,
+              cursor: 'pointer',
+              background: on
+                ? 'var(--dsw-alias-brand-primary)'
+                : 'var(--dsw-alias-border-l2)',
+              transition: 'background 120ms ease',
+            },
+          },
+          h('span', {
+            key: 'knob',
+            style: {
+              position: 'absolute',
+              top: 2,
+              left: on ? 15 : 2,
+              width: 13,
+              height: 13,
+              borderRadius: 999,
+              background: '#fff',
+              transition: 'left 120ms ease',
+            },
+          }),
+        )
       const timeStyle = {
         width: 74,
         padding: '2px 4px',
@@ -933,6 +955,21 @@ window.__ModuleLoader__.load({
           },
         },
         [
+          h('div', { key: 'subagents', style: { display: 'flex', alignItems: 'center', gap: 8 } }, [
+            h(
+              'span',
+              {
+                key: 'label',
+                style: { flex: 1, minWidth: 0, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' },
+              },
+              t('subagentToggle'),
+            ),
+            renderSwitch(
+              settings.notifySubagents !== false,
+              () => updateSettings({ notifySubagents: settings.notifySubagents === false }),
+              t('subagentToggle'),
+            ),
+          ]),
           h('div', { key: 'dnd', style: { display: 'flex', alignItems: 'center', gap: 8 } }, [
             h(
               'span',
@@ -952,19 +989,7 @@ window.__ModuleLoader__.load({
                   t('muted'),
                 )
               : null,
-            h(
-              'button',
-              {
-                key: 'switch',
-                type: 'button',
-                role: 'switch',
-                'aria-checked': settings.dnd ? 'true' : 'false',
-                'aria-label': t('dnd'),
-                onClick: () => updateSettings({ dnd: !settings.dnd }),
-                style: switchStyle,
-              },
-              h('span', { key: 'knob', style: knobStyle }),
-            ),
+            renderSwitch(settings.dnd, () => updateSettings({ dnd: !settings.dnd }), t('dnd')),
           ]),
           settings.dnd
             ? h(
@@ -1105,6 +1130,9 @@ window.__ModuleLoader__.load({
           const kind = fact.kind === 'error' ? 'error' : 'complete'
           const key = `${fact.sessionId}:${kind}:${fact.seq}`
           markSeen(fact.seq)
+          // Delegated work can finish far more often than the Sessions a person
+          // is actually watching, so subagent results are optional.
+          if (isSubagent(fact) && store.settings.notifySubagents === false) return
           // The list persists, so an event already recorded must not chime again
           // after a reload or a re-poll.
           if (store.items.some((entry) => entry.key === key)) return

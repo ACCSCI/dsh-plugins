@@ -178,8 +178,13 @@ const groupHeaders = elements.filter(
 )
 if (groupHeaders.length !== 2) throw new Error(`expected two workspace groups, got ${groupHeaders.length}`)
 
-const switchButton = elements.find((element) => element.props && element.props.role === 'switch')
+const switches = elements.filter((element) => element.props && element.props.role === 'switch')
+if (switches.length !== 2) throw new Error(`expected two setting switches, got ${switches.length}`)
+const subagentSwitch = switches.find((element) => element.props['aria-label'] === 'zh:subagentToggle')
+const switchButton = switches.find((element) => element.props['aria-label'] === 'zh:dnd')
+if (!subagentSwitch) throw new Error('subagent-notification switch missing')
 if (!switchButton) throw new Error('quiet-hours switch missing')
+if (subagentSwitch.props['aria-checked'] !== 'true') throw new Error('subagent notifications should default on')
 if (switchButton.props['aria-checked'] !== 'false') throw new Error('quiet hours should start off')
 if (elements.some((element) => element.type === 'input' && element.props.type === 'time')) {
   throw new Error('time inputs must stay hidden while quiet hours are off')
@@ -190,6 +195,21 @@ panelElement.type(panelElement.props)
 expand(elements)
 const timeInputs = elements.filter((element) => element.type === 'input' && element.props.type === 'time')
 if (timeInputs.length !== 2) throw new Error(`expected two time inputs after enabling, got ${timeInputs.length}`)
+
+// Toggling subagent notifications persists the preference and flips the switch.
+const subagentAfter = elements.find(
+  (element) => element.props && element.props['aria-label'] === 'zh:subagentToggle',
+)
+subagentAfter.props.onClick()
+elements.length = 0
+panelElement.type(panelElement.props)
+expand(elements)
+const subagentOff = elements.find(
+  (element) => element.props && element.props['aria-label'] === 'zh:subagentToggle',
+)
+if (subagentOff.props['aria-checked'] !== 'false') throw new Error('subagent switch should turn off')
+const storedSettings = JSON.parse(storage.get('dsh-notifier.settings') || '{}')
+if (storedSettings.notifySubagents !== false) throw new Error('subagent preference was not persisted')
 
 // --- mark one read ----------------------------------------------------------
 
