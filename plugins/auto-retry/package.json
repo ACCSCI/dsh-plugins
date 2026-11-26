@@ -2,6 +2,12 @@
   "name": "@accsci/dsh-auto-retry",
   "version": "1.0.0",
   "description": "Retry transient provider failures until they succeed, from a GUI switch that never retries quota or credential errors.",
+  "market": {
+    "title": { "en": "Auto retry", "zh": "自动重试" },
+    "description": {
+      "zh": "供应商临时故障（超时、断流、限流、5xx）时把模型请求重试到成功；额度、鉴权、请求非法则立即失败。开关在设置与会话头药丸，两处同步。"
+    }
+  },
   "keywords": [
     "dsh",
     "dsh-plugin",

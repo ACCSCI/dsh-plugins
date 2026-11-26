@@ -2,6 +2,12 @@
   "name": "@accsci/dsh-sysmon",
   "version": "1.0.0",
   "description": "Live CPU, memory and GPU readout under the DSH composer.",
+  "market": {
+    "title": { "en": "System monitor", "zh": "系统监控" },
+    "description": {
+      "zh": "输入框下方的 CPU / 内存 / GPU 实时读数：CPU 与内存取自 node:os，全平台可用；GPU 走 Windows 性能计数器，其他平台显示为不可用。"
+    }
+  },
   "keywords": [
     "dsh",
     "dsh-plugin",
