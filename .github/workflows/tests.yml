@@ -21,3 +21,17 @@ jobs:
       # CI hook, then run every dependency-free suite.
       - name: repository check
         run: node tools/check.mjs
+
+  market-index:
+    runs-on: ubuntu-latest
+    steps:
+      # The index pins each version to a tag's commit, so the check needs every
+      # tag and the history behind it; the default shallow clone has neither.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: published index is current
+        run: node tools/market-index.mjs --check
