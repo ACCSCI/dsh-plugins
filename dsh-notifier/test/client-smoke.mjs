@@ -1,8 +1,9 @@
 // Smoke test: load the Client bundle outside the browser and exercise the
 // notification centre paths that would otherwise crash a slot entry.
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
-const source = readFileSync('D:/Projects/dsh-plugins/dsh-notifier/client.js', 'utf8')
+const source = readFileSync(fileURLToPath(new URL('../client.js', import.meta.url)), 'utf8')
 
 const storage = new Map()
 const localStorage = {
