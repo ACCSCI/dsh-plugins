@@ -1,0 +1,103 @@
+{
+  "format": 1,
+  "title": {
+    "en": "ACCSCI DSH plugins",
+    "zh": "ACCSCI 的 DSH 插件"
+  },
+  "description": {
+    "en": "Plugins for DeepSeek Harness (dsh): host + web-client halves, installed from this repository by commit.",
+    "zh": "面向 DeepSeek Harness（dsh）的插件：host 半 + 浏览器半，按提交从本仓库安装。"
+  },
+  "plugins": [
+    {
+      "name": "@accsci/dsh-auto-retry",
+      "title": {
+        "en": "Auto retry",
+        "zh": "自动重试"
+      },
+      "description": {
+        "en": "Retry transient provider failures until they succeed, from a GUI switch that never retries quota or credential errors.",
+        "zh": "供应商临时故障（超时、断流、限流、5xx）时把模型请求重试到成功；额度、鉴权、请求非法则立即失败。开关在设置与会话头药丸，两处同步。"
+      },
+      "icon": "icons/accsci-dsh-auto-retry.svg",
+      "author": "ACCSCI",
+      "homepage": "https://github.com/ACCSCI/dsh-plugins/blob/main/plugins/auto-retry/README.md",
+      "repository": {
+        "url": "https://github.com/ACCSCI/dsh-plugins",
+        "directory": "plugins/auto-retry"
+      },
+      "versions": [
+        {
+          "version": "1.0.0",
+          "publishTimestamp": 1795664515,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/ACCSCI/dsh-plugins.git",
+            "commit": "176afd8f3ea7a06760101c186eaa58d61c7a1396",
+            "path": "plugins/auto-retry"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@accsci/dsh-sysmon",
+      "title": {
+        "en": "System monitor",
+        "zh": "系统监控"
+      },
+      "description": {
+        "en": "Live CPU, memory and GPU readout under the DSH composer.",
+        "zh": "输入框下方的 CPU / 内存 / GPU 实时读数：CPU 与内存取自 node:os，全平台可用；GPU 走 Windows 性能计数器，其他平台显示为不可用。"
+      },
+      "icon": "icons/accsci-dsh-sysmon.svg",
+      "author": "ACCSCI",
+      "homepage": "https://github.com/ACCSCI/dsh-plugins/blob/main/plugins/sysmon/README.md",
+      "repository": {
+        "url": "https://github.com/ACCSCI/dsh-plugins",
+        "directory": "plugins/sysmon"
+      },
+      "versions": [
+        {
+          "version": "1.0.0",
+          "publishTimestamp": 1795664515,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/ACCSCI/dsh-plugins.git",
+            "commit": "176afd8f3ea7a06760101c186eaa58d61c7a1396",
+            "path": "plugins/sysmon"
+          }
+        }
+      ]
+    },
+    {
+      "name": "@accsci/dsh-workspace-todo",
+      "title": {
+        "en": "Workspace todo",
+        "zh": "工作区待办"
+      },
+      "description": {
+        "en": "A todo list bound to the Session's working directory, opened from the Session header.",
+        "zh": "绑定到当前会话工作目录的待办清单：会话顶栏一个按钮打开浮层面板；数据存在 <工作目录>/.dsh/todos.json，同一目录下的所有会话共享一份。"
+      },
+      "icon": "icons/accsci-dsh-workspace-todo.svg",
+      "author": "ACCSCI",
+      "homepage": "https://github.com/ACCSCI/dsh-plugins/blob/main/plugins/workspace-todo/README.md",
+      "repository": {
+        "url": "https://github.com/ACCSCI/dsh-plugins",
+        "directory": "plugins/workspace-todo"
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795664515,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/ACCSCI/dsh-plugins.git",
+            "commit": "176afd8f3ea7a06760101c186eaa58d61c7a1396",
+            "path": "plugins/workspace-todo"
+          }
+        }
+      ]
+    }
+  ]
+}

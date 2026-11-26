@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="System monitor">
+  <rect x="4" y="6" width="56" height="52" rx="12" fill="#0f172a" />
+  <rect x="15" y="28" width="8" height="18" rx="4" fill="#60a5fa" />
+  <rect x="28" y="19" width="8" height="27" rx="4" fill="#34d399" />
+  <rect x="41" y="24" width="8" height="22" rx="4" fill="#fbbf24" />
+</svg>

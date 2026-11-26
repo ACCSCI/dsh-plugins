@@ -19,6 +19,21 @@ tools. Every plugin ships with dependency-free tests that run on plain Node.
 
 ## Install
 
+### Through the plugin index
+
+This repository also publishes a DSH **plugin index**, which is what the **Discover** tab reads:
+
+```text
+https://accsci.github.io/dsh-plugins/index.json
+```
+
+Open **Plugins → Experimental plugins → Custom plugin index**, then in **Discover** pick **Add index
+source** and paste that URL. Installing from a card runs the exact `git+https` spec the index lists —
+pinned to a commit and a directory in this repository — so nothing goes through npm and nothing has to
+be cloned first.
+
+### From a checkout
+
 ```bash
 git clone https://github.com/ACCSCI/dsh-plugins
 ```
@@ -56,6 +71,8 @@ would be a profile migration rather than a fix.
 plugins/<name>/     # package.json, cordis.patch.yml, lib/, test/, README.md
 dsh-notifier/       # a personal bundle that predates plugins/, checked the same way
 tools/check.mjs     # the repository self-check
+tools/market-index.mjs  # writes the published index: docs/index.json, docs/index.html
+docs/               # the published index — generated, do not hand-edit
 ```
 
 Plugin packages may also sit at the repository root when they carry their own `cordis.patch.yml`;
@@ -71,6 +88,7 @@ Every suite runs on plain Node with **no dependencies** and no DSH installation:
 ```bash
 node tools/check.mjs             # manifests, README, CI wiring, then every suite
 node tools/check.mjs --no-tests  # manifests only
+node tools/market-index.mjs --check  # docs/ still matches the tags
 node plugins/sysmon/test/host.mjs
 ```
 
@@ -83,6 +101,20 @@ The workspace-todo suite also ships a live check that needs a running GUI:
 ```bash
 node plugins/workspace-todo/test/live-check.mjs <project dir>
 ```
+
+## Releasing
+
+Versions belong to packages, not to the repository, so each release is one tag:
+
+```bash
+git tag -a "@accsci/dsh-sysmon@1.0.1" -m "sysmon 1.0.1"
+git push origin --tags
+node tools/market-index.mjs        # rewrite docs/, then commit it
+```
+
+The generator reads exactly that tag — `<package name>@<version>` — and refuses to publish it if the
+`package.json` at the tagged commit disagrees about the version. Private bundles (`dsh-notifier`,
+`dsh-web-fetch-clash`) never enter the index: they carry machine- or network-specific behaviour.
 
 ## Optional: npm
 
@@ -109,7 +141,16 @@ MIT — see [LICENSE](LICENSE).
 （路由、服务、持久化）+ 可选的浏览器侧 **client 半**（通过启动图注入 Web GUI 的界面贡献）。
 这些插件默认不注册模型工具——它们是给用户用的界面能力，不是给 Agent 用的工具。
 
-插件以目录形式安装（`@accsci/*` 是包名，不是已发布的 npm 坐标）：
+**从插件索引安装**：本仓库发布了一个 DSH 插件索引 ——
+
+```text
+https://accsci.github.io/dsh-plugins/index.json
+```
+
+在 **插件 → 实验性插件** 里打开 **自定义插件索引**，再到 **发现 → 添加索引源** 粘贴上面的地址。
+卡片安装的是索引里写死的 `git+https` 地址（固定提交 + 仓库内的插件目录），不经过 npm，也不用先克隆仓库。
+
+也可以按目录安装（`@accsci/*` 是包名，不是已发布的 npm 坐标）：
 
 ```bash
 git clone https://github.com/ACCSCI/dsh-plugins
@@ -130,6 +171,12 @@ dsh plugin --profile <profile> add <插件目录绝对路径>
 `import()` 取模块，进程内的 ESM 缓存不会因为停用/启用 entry 或重装 bundle 而失效）。
 
 **自测**：`node tools/check.mjs` 校验清单一致性并跑完所有离线用例；CI 每次 push 都跑它。
+`node tools/market-index.mjs --check` 校验已提交的 `docs/` 和标签是否一致。
+
+**发版**：一个包一个标签（`<包名>@<版本>`，如 `@accsci/dsh-sysmon@1.0.1`），推标签后跑
+`node tools/market-index.mjs` 重写 `docs/` 再提交。生成器只认这种标签，且标签提交里的 `package.json`
+版本必须与标签一致，否则直接报错而不是发布一个装不上的版本。私有包（`dsh-notifier`、
+`dsh-web-fetch-clash`）不进索引。
 
 **发布（可选）**：`cd plugins/sysmon && npm publish --registry=https://registry.npmjs.org`。不发布也
 不影响任何用法——按路径装、profile 里用 `link:`，都不经过 registry。
