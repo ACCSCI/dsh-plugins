@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Auto retry",
+    "description": "Retries transient provider failures until they succeed, and never retries quota or credential errors. One switch in Settings and in the Session header."
+  }
+}
